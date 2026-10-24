@@ -1,0 +1,144 @@
+# Robot Arm Pick-and-Place Simulator
+
+An open-source learning project for simulating a robotic arm, moving a ball, and training a controller to complete a pick-and-place task.
+
+**Project state:** P0 foundation — editable package install and a minimal MuJoCo physics demo.
+
+## Goal
+
+Build a reproducible MuJoCo simulation in which a robotic arm starts at a known pose, grasps a ball from a table, transfers it to a marked target, and releases it. Establish a scripted baseline before experimenting with learned control policies.
+
+## Success criteria
+
+An episode succeeds when the ball is lifted clear of the table, moved within **5 cm** of the target centre, released, and remains in the target region for **1 second** without falling off the table. The tolerance is an initial engineering target and may be revised with evidence.
+
+## Scope
+
+- A single fixed-base arm with a two-finger gripper, one table, one spherical object and a target marker.
+- Physics-based interactions, robot observations, actions, resets, episode results, and replayable trajectories.
+- Scripted pick-and-place baseline followed by a trained control policy.
+- Automated tests, seeded evaluation and documented results.
+
+Not in the initial scope: real robot control, camera perception, multi-robot coordination, navigation, hardware fabrication, and claims of autonomous general-purpose manipulation.
+
+## Technology
+
+- **Python 3.11+** for rapid prototyping, experiment scripts and model training.
+- **MuJoCo** as the physics simulator and model loader.
+- **Gymnasium-style API** (`reset`, `step`, `observation`, `reward`) for training compatibility; a dependency on Gymnasium is optional until training begins.
+- **pytest**, NumPy and CSV/JSON for tests and experiment data.
+
+Initial robot selection: a properly licensed, existing 6–7 degree-of-freedom fixed-base arm with a two-finger gripper. Model selection and asset-licence verification are explicit P0 tasks; no robot model is bundled yet.
+
+## Intended project layout
+
+```text
+robot-arm-sim/
+├── README.md
+├── DESIGN.md
+├── ROADMAP.md
+├── STATUS.md
+├── pyproject.toml
+├── requirements.txt
+├── LICENSE
+├── scripts/
+│   └── run_simulation.py
+├── src/robot_arm_sim/
+│   ├── __init__.py
+│   ├── __main__.py
+│   ├── cli.py
+│   ├── config.py
+│   ├── controls.py
+│   ├── model_ids.py
+│   ├── observations.py
+│   ├── simulation.py
+│   ├── viewer.py
+│   └── assets/
+│       ├── default.toml
+│       └── demo.xml
+├── tests/
+└── results/                      # generated, not committed by default
+```
+
+The demo scene contains a table and a free ball to validate installation and MuJoCo stepping. It does not yet include the planned robot or pick-and-place controller.
+
+## Install and run
+
+```sh
+python -m venv .venv
+source .venv/bin/activate
+python -m pip install -r requirements.txt
+```
+
+`uv.lock` is the canonical lockfile, recording exact direct and transitive versions,
+artifact hashes, and Python/platform markers. `requirements.txt` is the generated
+exact-version pip export including the development extra. The pip export omits
+hashes because pip cannot combine hash-required mode with this project's editable
+install (`-e .`). For hash-verified installation, use
+`uv sync --locked --extra dev`. After changing dependencies, regenerate both lock
+representations with:
+
+```sh
+uv lock
+uv export --format requirements-txt --locked --extra dev --no-hashes --output-file requirements.txt
+```
+
+Both installation methods install the project in editable mode, so changes under
+`src/` are available without reinstalling. Run the interactive MuJoCo viewer with:
+
+```sh
+python -m robot_arm_sim
+# or
+python scripts/run_simulation.py
+```
+
+To launch the demo with the selected Franka Panda model attached, first place a
+locally obtained and reviewed `panda.xml` and its referenced assets under
+`.cache/robot_models/franka_emika_panda/`, then run:
+
+```sh
+python -m robot_arm_sim --robot
+```
+
+Alternatively, supply the path to `panda.xml` explicitly:
+
+```sh
+python -m robot_arm_sim --robot --robot-model /path/to/franka_emika_panda/panda.xml
+```
+
+The model is not downloaded automatically: its upstream revision and mesh
+provenance still require review. See [docs/assets_and_licenses.md](docs/assets_and_licenses.md).
+
+Run a headless physics smoke check with:
+
+```sh
+python -m robot_arm_sim --headless --steps 1000
+```
+
+The robot scene can also be run headlessly with `--robot --headless`.
+
+The installed `robot-arm-sim` command provides the same entry point.
+The default configuration is packaged with the project. To use a custom TOML file,
+pass `--config path/to/config.toml`; its `model_path` is resolved relative to that
+configuration file.
+
+Configuration uses named joint positions (hinge values in radians, slide values
+in metres) and named actuator commands. At startup, configured names and values
+are checked against the model's joint limits and actuator control ranges. The
+starter scene has no robot actuators, so both robot defaults are empty until an
+arm model is selected.
+
+## Reading order
+
+- [DESIGN.md](DESIGN.md): architecture, interfaces, task definition and testing strategy.
+- [ROADMAP.md](ROADMAP.md): milestones and acceptance criteria.
+- [STATUS.md](STATUS.md): verified progress and immediate next tasks.
+
+## Open-source release checklist
+
+Before publishing: verify the MIT licence in [LICENSE](LICENSE), record simulator/model asset attribution and licence compatibility, exclude generated training data and large binaries, and document platform support and dependency versions. Contributions should include tests and evidence for claimed outcomes.
+
+## References
+
+- MuJoCo documentation: https://mujoco.readthedocs.io/en/stable/
+- Gymnasium-Robotics: https://robotics.farama.org/

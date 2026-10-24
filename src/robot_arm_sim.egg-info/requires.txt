@@ -1,0 +1,4 @@
+mujoco<4,>=3.3
+
+[dev]
+pytest>=8

@@ -1,0 +1,13 @@
+[simulation]
+model_path = "demo.xml"
+seed = 0
+timestep = 0.002
+controller_period = 0.04
+
+[robot]
+default_joint_pose = {}
+default_gripper_command = {}
+
+[task]
+ball_spawn = [0.0, 0.0, 0.62]
+target_position = [0.25, 0.0, 0.502]

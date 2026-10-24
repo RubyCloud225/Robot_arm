@@ -1,0 +1,88 @@
+<mujoco model="robot_arm_sim_demo">
+  <!-- MuJoCo is unit-agnostic; this scene uses metres, kilograms, seconds and radians.
+       Gravity is Earth-like standard gravity (9.81 m/s^2) along world -Z (up is +Z). -->
+  <compiler angle="radian"/>
+  <!-- 500 Hz physics; implicitfast handles the robot's stiff position servos.
+       Newton + elliptic cones resolves sliding contacts; retain soft contacts
+       rather than imposing hard ball attachments. See docs/scene_settings.md. -->
+  <option gravity="0 0 -9.81" timestep="0.002" integrator="implicitfast"
+          solver="Newton" cone="elliptic" iterations="100" tolerance="1e-8"
+          noslip_iterations="0"/>
+  <statistic center="-0.2 0 0.65" extent="1.6"/>
+  <visual>
+    <global azimuth="125" elevation="-30"/>
+    <headlight ambient="0.25 0.25 0.25" diffuse="0.5 0.5 0.5"/>
+  </visual>
+
+  <asset>
+    <!-- Procedural checker gives depth and motion cues without external assets. -->
+    <texture name="floor_checker" type="2d" builtin="checker"
+             rgb1="0.18 0.22 0.27" rgb2="0.32 0.38 0.45"
+             width="512" height="512"/>
+    <material name="floor_material" texture="floor_checker"
+              texrepeat="4 4" texuniform="false" reflectance="0"/>
+    <material name="ball_material" rgba="0.85 0.12 0.1 1"
+              specular="0.25" shininess="0.2"/>
+  </asset>
+
+  <default>
+    <geom condim="3" friction="1 0.005 0.0001"
+          solref="0.02 1" solimp="0.9 0.95 0.001"/>
+    <default class="table_collision">
+      <geom type="box" contype="1" conaffinity="1"
+            rgba="0.55 0.38 0.22 1"/>
+    </default>
+  </default>
+
+  <worldbody>
+    <camera name="overview" mode="fixed" pos="1.5 -2 1.6" fovy="45"
+            xyaxes="0.7619393 0.6476484 0 -0.2405400 0.2829882 0.9284709"/>
+    <camera name="top_down" mode="fixed" pos="-0.2 0 2.8" fovy="50"
+            xyaxes="1 0 0 0 1 0"/>
+    <light name="key_light" pos="-0.5 -1 2.5" dir="0.2 0.4 -1"
+           directional="true" diffuse="0.7 0.7 0.7" castshadow="true"/>
+    <light name="fill_light" pos="0.5 1 2" dir="-0.2 -0.4 -1"
+           directional="true" diffuse="0.35 0.35 0.35" castshadow="false"/>
+    <!-- Fixed world ground at z=0, normal +Z. Plane collision is infinite;
+         size gives a 4 x 4 m visible patch, not a physical boundary.
+         Explicit contact masks allow ball and robot contacts. -->
+    <geom name="floor" type="plane" pos="0 0 0" size="2 2 0.1"
+          material="floor_material" contype="1" conaffinity="1"
+          condim="3" friction="1 0.005 0.0001"/>
+    <!-- Fixed table (no joints), all dimensions in metres. Box sizes are half-extents.
+         Top: 0.90 x 0.70 x 0.05, surface z=0.50, underside z=0.45.
+         Four 0.06 x 0.06 x 0.45 legs meet the underside and floor exactly.
+         Primitive colliders match the visible geometry, including the legs. -->
+    <body name="table" pos="0 0 0.475" childclass="table_collision">
+      <geom name="table_top" size="0.45 0.35 0.025"/>
+      <geom name="table_leg_front_left" pos="-0.39 -0.29 -0.25"
+            size="0.03 0.03 0.225"/>
+      <geom name="table_leg_front_right" pos="0.39 -0.29 -0.25"
+            size="0.03 0.03 0.225"/>
+      <geom name="table_leg_back_left" pos="-0.39 0.29 -0.25"
+            size="0.03 0.03 0.225"/>
+      <geom name="table_leg_back_right" pos="0.39 0.29 -0.25"
+            size="0.03 0.03 0.225"/>
+    </body>
+    <!-- Bottom z=0.58: 0.08 m above the z=0.50 tabletop at reset. -->
+    <body name="ball" pos="0 0 0.62">
+      <!-- Six unactuated velocity DoFs (translation + rotation); orientation
+           uses a unit quaternion. No weld, mocap tracking or joint damping. -->
+      <freejoint name="ball_free"/>
+      <!-- Uniform solid sphere: r=0.04 m, m=0.1 kg. MuJoCo computes
+           Ixx=Iyy=Izz=(2/5)*m*r^2=0.000064 kg m^2 from this geom.
+           Keep one mass source; do not duplicate it in an inertial element.
+           Friction: sliding, torsional, rolling. condim=3 activates sliding
+           friction only; grasp-specific rotational friction is not tuned yet. -->
+      <geom name="ball_geom" type="sphere" size="0.04" mass="0.1"
+            material="ball_material" friction="1 0.005 0.0001"
+            condim="3" contype="1" conaffinity="1"/>
+    </body>
+    <body name="target" pos="0.25 0 0.502">
+      <!-- Visual-only translucent disc: sites never participate in contacts.
+           Its lower face meets the tabletop; its top avoids z-fighting. -->
+      <site name="target_marker" type="cylinder" size="0.06 0.002"
+            rgba="0.1 0.75 0.2 0.55"/>
+    </body>
+  </worldbody>
+</mujoco>
