@@ -130,12 +130,259 @@ robot-arm-simulator/
 **Goal:** Fail early when an asset or MJCF definition is broken.
 
 - [x] P0-005.01 Implement an explicit model loader with useful errors for missing files and invalid XML. *(Evidence: `src/robot_arm_sim/model_loader.py`, `tests/test_model_loader.py`, `docs/model_loading.md` — validated successful MuJoCo model loading, missing files, invalid paths, malformed XML/MJCF, missing dependencies and model compilation errors. Tests also verify exception chaining, independent MjModel/MjData allocation, preservation of source files and no unintended physics stepping. P0-005.01 tests passed; model-loader integration into existing scene composition remains outside this task.)*
-- [ ] P0-005.02 Construct and own a fresh `mujoco.MjModel` and `mujoco.MjData` for each independent simulation instance (or document a safe explicit ownership model).
-- [ ] P0-005.03 Resolve all required joints, actuators, sites and bodies from **names**, and validate their existence before stepping.
-- [ ] P0-005.04 Cache validated model IDs without assuming joint IDs, `qpos` indices and actuator indices are interchangeable.
-- [ ] P0-005.05 Validate expected arm joint count, gripper actuators and free-ball qpos/qvel dimensions.
-- [ ] P0-005.06 Validate the finite bounds/default values for joint ranges and actuators.
-- [ ] P0-005.07 Provide an informative diagnostic report listing model name, number of bodies, joints, DoFs, actuators and timestep.
+
+- [x] P0-005.02 Construct and own a fresh `mujoco.MjModel` and `mujoco.MjData` for each independent simulation instance (or document a safe explicit ownership model).
+
+  **Evidence:** `src/robot_arm_sim/model_instance.py`, `tests/test_model_instance.py`, `docs/model_ownership.md`.
+
+  Implemented explicit simulation ownership through `SimulationInstance`, with independent model/state allocation using `from_model_file()` and `from_robot_scene()`. Restricted direct construction, ordinary ownership-reference reassignment and deletion, copying, deep copying and serialisation.
+
+  **Validation:** All reported P0-005.02 tests passed, including:
+
+  - Independent `MjModel` and `MjData` identities and memory buffers.
+  - Isolation of joint positions, velocities, actuator commands and simulation time.
+  - Isolation of mutable compiled model parameters.
+  - Repeated creation of 32 independent simulation instances.
+  - Rejection of direct construction, reassignment, copying and pickling.
+  - Preservation of surviving instances after garbage collection.
+  - Correct propagation of injected loading and scene-construction failures.
+  - Independent physics progression under repeated and interleaved stepping.
+  - Preservation of source MJCF files.
+  - Franka Panda scene integration and state-isolation tests.
+
+  **Result:** PASS — all tests reported successful.
+
+  **Limitations:** Ownership is an application-level contract, not a security boundary. Underlying MuJoCo objects remain mutable. Concurrent mutation of a shared instance, simulation lifecycle management, reset, robot reachability and grasp validation are outside P0-005.02.
+
+  **Status:** COMPLETE.
+
+
+- [x] P0-005.03 Resolve all required joints, actuators, sites and bodies from **names**, and validate their existence before stepping.
+
+  **Evidence:** `src/robot_arm_sim/model_ids.py`, `tests/test_model_ids.py`, `docs/model_name_validation.md`, `scripts/run_tests.py`.
+
+  Implemented centralised, read-only MuJoCo component resolution using `mujoco.mj_name2id()` with explicit object-type validation. Required Franka Panda arm joints, finger joints, actuators, gripper actuator, robot bodies, ball, target and scene sites are resolved by name against the compiled model.
+
+  **Validation coverage:**
+  - Correct resolution of named joints, actuators, bodies and sites.
+  - Rejection of missing, malformed and incorrectly categorised components.
+  - Case-sensitive matching and rejection of invalid whitespace.
+  - Detection of duplicate names and empty validation schemas.
+  - Aggregated diagnostic reporting for multiple missing components.
+  - Independent resolution across differently ordered compiled models.
+  - Rejection of invalid model types and unsupported object categories.
+  - Verification that failed validation does not return partially resolved results.
+  - Confirmation that name resolution does not mutate model parameters or simulation state.
+  - Confirmation that validation does not advance simulation physics.
+  - Regression coverage for model loading, ownership and existing simulation functionality.
+
+  **Test execution:**
+  - Runner: `python scripts/run_tests.py`
+  - Result: **307 passed, 0 failed** (user-reported).
+  - Full repository regression suite completed successfully.
+
+  **Limitations:** Successful name resolution confirms component existence, not joint types, state-array addresses, actuator transmission semantics, control ranges or physical reachability. These are addressed in P0-005.04 through P0-005.06 and subsequent control-validation tickets.
+
+  **Real-model validation:** The Franka Emika Panda MJCF
+  was loaded from the local `.cache/robot_models/franka_emika_panda/` directory through the existing test runner.
+  
+  **Regression result:** 307 tests passed, 0 failed.
+  
+  **Asset handling:** The locally cached Panda model and its supporting assets were used without modification.
+
+  **Status:** COMPLETE — P0-005.03 accepted based on reported test results.
+
+
+- [x] P0-005.04 Cache validated model IDs without assuming joint IDs, `qpos` indices and actuator indices are interchangeable.
+
+  **Evidence:** `src/robot_arm_sim/model_addresses.py`, `tests/test_model_addresses.py`, `docs/model_address_caching.md`, `scripts/run_tests.py`.
+
+  Implemented model-specific, read-only address caching for MuJoCo joints, actuators, bodies and sites. Cached identifiers are validated against their originating compiled `MjModel`, with joint position and velocity addresses resolved independently through `jnt_qposadr` and `jnt_dofadr`.
+
+  **Validation coverage:**
+  - Correct address and dimensional mapping for hinge, slide, ball and free joints.
+  - Verification of 7 qpos and 6 qvel coordinates for free joints.
+  - Validation of address bounds and complete joint-state slices.
+  - Rejection of negative, invalid, swapped and incorrectly named identifiers.
+  - Rejection of stale caches and cross-model cache reuse.
+  - Validation of actuator control indices independently from joint IDs.
+  - Detection of invalid body and site identifiers.
+  - Read-only cache mappings and isolation from subsequent input mutations.
+  - Confirmation that cache construction does not modify model parameters or simulation state.
+  - Real Franka Panda integration validating arm joints, finger joints, all eight actuators and ball free-joint dimensions.
+  - Independent cache ownership across multiple Panda simulation instances.
+  - Full regression validation of previous P0 milestones.
+
+  **Execution environment:**
+  - Platform: macOS (Darwin)
+  - Python: 3.14.6
+  - pytest: 9.1.1
+  - pluggy: 1.7.0
+  - Runner: `./scripts/run_tests.py`
+  - Result: **335 passed, 0 failed, 0 skipped**
+  - Execution time: 1.68 seconds
+
+  **Limitations:** Cached identifiers remain valid only for their originating compiled model and unchanged model structure. Caching does not establish actuator transmission semantics, control limits, physical reachability or safe robot motion.
+
+  **Status:** COMPLETE — validated.
+
+
+- [x] P0-005.05 Validate expected arm joint count, gripper actuators and free-ball qpos/qvel dimensions.
+
+  **Evidence:** `src/robot_arm_sim/model_structure.py`, `tests/test_model_structure.py`, `docs/model_structure_validation.md`.
+
+  Implemented read-only structural validation of the complete Franka Emika Panda pick-and-place scene.
+
+  **Validated structure:**
+  - Seven named arm hinge joints.
+  - Two named gripper slide joints.
+  - Seven arm actuators and one gripper actuator.
+  - Exactly 10 joints and 8 actuators.
+  - Total model dimensions: nq=16 and nv=15.
+  - Ball free joint with 7 qpos and 6 qvel coordinates.
+  - Verification that ball_free belongs to the ball body.
+  - Model state-array address bounds.
+
+  **Adversarial validation:**
+  - Rejection of missing and unexpected joints.
+  - Rejection of missing and additional actuators.
+  - Detection of incorrect joint types.
+  - Detection of a free joint attached to the wrong body.
+  - Rejection of additional joints even when all required names remain present.
+  - Detection of hinge-to-slide substitution despite unchanged model dimensions.
+  - Preservation of model state and simulation time after validation failures.
+
+  **Real-model integration:**
+  The composed Franka Panda scene passed structural validation using the locally configured robot model.
+
+  **Regression results:**
+  - Runner: `./scripts/run_tests.py`
+  - Platform: macOS (Darwin)
+  - Python: 3.14.6
+  - pytest: 9.1.1
+  - Tests collected: 359
+  - Passed: 359
+  - Failed: 0
+  - Skipped: 0
+  - Execution time: 1.75 seconds
+
+  **Limitations:** Structural validation does not establish actuator transmission correctness, control-range safety, gripper coupling behaviour, robot reachability or successful manipulation.
+
+  **Status:** COMPLETE — validated.
+
+
+- [x] P0-005.06 Validate finite bounds and default values for joint ranges and actuators.
+
+  **Evidence:** `src/robot_arm_sim/model_limits.py`,
+  `tests/test_model_limits.py`,
+  `docs/model_limits_validation.md`.
+
+  Implemented read-only validation of Franka Panda joint
+  limits, actuator control ranges and home-keyframe values.
+
+  **Validation coverage:**
+  - Seven arm joints and two gripper finger joints.
+  - Eight named actuators.
+  - Enabled joint and actuator limit enforcement.
+  - Finite, strictly ordered joint and actuator bounds.
+  - Home-keyframe joint positions within permitted ranges.
+  - Home actuator controls within permitted ranges.
+  - Explicit joint and actuator default-value validation.
+  - Rejection of NaN, infinity and invalid numeric types.
+  - Rejection of disabled or reversed limits.
+  - Rejection of corrupted home joint positions.
+  - Verification of gripper actuator8 control range [0, 255].
+  - Confirmation that gripper commands are not interpreted
+    as physical opening width in metres.
+  - Independent compiled models for destructive tests.
+  - No modification of source robot assets or shared fixtures.
+  - Read-only validator behaviour.
+
+  **Real-model validation:**
+  The composed Franka Panda model passed the limits
+  validation tests.
+
+  **Regression test results:**
+  - Runner: `./scripts/run_tests.py`
+  - Platform: macOS (Darwin)
+  - Python: 3.14.6
+  - pytest: 9.1.1
+  - Tests collected: 381
+  - Passed: 381
+  - Failed: 0
+  - Skipped: 0
+  - Execution time: 1.85 seconds
+
+  **Limitations:**
+  Numeric limit validation does not prove actuator
+  transmission correctness, motion safety, control
+  stability or end-effector reachability.
+
+  **Status:** COMPLETE — validated.
+
+
+- [x] P0-005.07 Provide an informative diagnostic report listing model name, number of bodies, joints, DoFs, actuators and timestep.
+
+  **Evidence:** `src/robot_arm_sim/model_diagnostics.py`,
+  `tests/test_model_diagnostics.py`,
+  `docs/model_diagnostics.md`.
+
+  Implemented a deterministic, read-only diagnostic reporting
+  system for the compiled Franka Panda simulation model.
+
+  **Diagnostic coverage:**
+  - Compiled model name and optional source-path metadata.
+  - MuJoCo version.
+  - Body, joint, actuator and site counts.
+  - Position dimensions (nq) and velocity DoFs (nv).
+  - Compiled physics timestep.
+  - Named component validation.
+  - Model-specific address-cache validation.
+  - Panda structural validation.
+  - Joint and actuator limits validation.
+  - Physics timestep validation.
+
+  **Failure handling:**
+  - Distinguishes PASS, FAIL and BLOCKED states.
+  - Rejects overall success when any required check fails.
+  - Detects invalid joint limits and actuator ranges.
+  - Detects invalid or non-finite physics timesteps.
+  - Aggregates independent validation failures.
+  - Preserves actionable error messages.
+  - Propagates unexpected programming errors.
+  - Never interprets missing validation results as success.
+
+  **Report integrity:**
+  - Immutable report snapshots.
+  - Deterministic repeated diagnostic results.
+  - Human-readable text formatting.
+  - No automatic printing or file modification.
+  - No revalidation during formatting.
+  - No simulation physics stepping.
+  - No mutation of model parameters or simulation state.
+
+  **Real-model validation:**
+  The complete composed Franka Emika Panda scene passed
+  all required diagnostic stages.
+
+  **Regression results:**
+  - Command: `./scripts/run_tests.py`
+  - Platform: macOS (Darwin)
+  - Python: 3.14.6
+  - pytest: 9.1.1
+  - Tests collected: 416
+  - Passed: 416
+  - Failed: 0
+  - Skipped: 0
+  - Execution time: 2.01 seconds
+
+  **Limitations:**
+  Model diagnostics establish structural and numerical
+  validity under the implemented checks. They do not
+  demonstrate successful actuator motion, safe trajectories,
+  gripper operation or end-effector reachability.
+
+  **Status:** COMPLETE — validated.
 
 **Acceptance evidence:** Good model loads; bad or incomplete models fail before a physics step with identifiable error messages.
 
@@ -143,7 +390,53 @@ robot-arm-simulator/
 
 **Goal:** Separate simulation mechanics from application scripts and rendering.
 
-- [ ] P0-006.01 Implement a small `Simulator` wrapper with `load()`, `reset(seed=None)`, `step(control, n_substeps=...)` and `close()` or equivalent methods.
+
+- [x] P0-006.01 Implement a Simulator wrapper with explicit
+  `load()`, `reset()`, `step()` and `close()` lifecycle methods.
+
+  **Evidence:**
+  - `src/robot_arm_sim/simulator.py`
+  - `tests/test_simulator_lifecycle.py`
+  - `docs/simulator_lifecycle.md`
+
+  Implemented the initial Simulator lifecycle wrapper using
+  the existing SimulationInstance ownership infrastructure.
+
+  **Validated functionality:**
+  - Explicit NEW, LOADED and CLOSED lifecycle states.
+  - Lazy model allocation through load().
+  - Independent MjModel and MjData ownership per simulator.
+  - Rejection of duplicate loading.
+  - Rejection of loading after closure.
+  - Rejection of model/data access before initialisation.
+  - Rejection of model/data access after closure.
+  - Safe closure before loading.
+  - Idempotent close() behaviour.
+  - Failed loading preserves the NEW state.
+  - Independent simulations remain valid when another closes.
+  - No unexpected physics stepping or time advancement.
+  - No viewer or rendering dependency.
+  - Documented external-reference lifetime semantics.
+  - Rejection of invalid constructor arguments.
+
+  **Deferred functionality:**
+  reset() and step() currently raise NotImplementedError
+  when the simulator is loaded. Their implementations are
+  intentionally reserved for subsequent P0-006 tickets.
+
+  **Regression evidence:**
+  - Command: `./scripts/run_tests.py`
+  - Platform: macOS (Darwin)
+  - Python: 3.14.6
+  - pytest: 9.1.1
+  - Tests collected: 442
+  - Tests passed: 442
+  - Failed: 0
+  - Skipped: 0
+  - Execution time: 2.23 seconds
+
+  **Status:** COMPLETE — lifecycle wrapper foundation validated.
+
 - [ ] P0-006.02 Make `reset()` restore robot qpos/qvel, gripper command, ball free-joint pose/velocity and target placement.
 - [ ] P0-006.03 Clear stale applied forces, controls, warm-start artifacts or other transient state as appropriate before producing reset observations.
 - [ ] P0-006.04 Recompute derived kinematics/contact data after state writes with the correct MuJoCo forward/step operation.

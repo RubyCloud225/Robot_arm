@@ -49,3 +49,31 @@ integrator: parent has 0 (default), child has 3, keeping parent value
 WARNING Fri Oct 23 11:41:29 2026: Attach conflict when attaching 'panda' to 'robot_arm_sim_demo', policy is 'warning'
 integrator: parent has 0 (default), child has 3, keeping parent value
 
+WARNING Sat Oct 24 19:37:55 2026: Inertia matrix is too close to singular at DOF 0. Check model. Time = 0.0000.
+
+WARNING Sat Oct 24 19:37:55 2026: Inertia matrix is too close to singular at DOF 0. Check model. Time = 0.0000.
+
+WARNING Sat Oct 24 19:47:31 2026: Inertia matrix is too close to singular at DOF 0. Check model. Time = 0.0000.
+
+WARNING Sat Oct 24 19:47:31 2026: Inertia matrix is too close to singular at DOF 0. Check model. Time = 0.0000.
+
+WARNING Sat Oct 24 19:57:55 2026: Inertia matrix is too close to singular at DOF 0. Check model. Time = 0.0000.
+
+WARNING Sat Oct 24 19:57:55 2026: Inertia matrix is too close to singular at DOF 0. Check model. Time = 0.0000.
+
+WARNING Sat Oct 24 20:03:20 2026: Inertia matrix is too close to singular at DOF 0. Check model. Time = 0.0000.
+
+WARNING Sat Oct 24 20:03:20 2026: Inertia matrix is too close to singular at DOF 0. Check model. Time = 0.0000.
+
+WARNING Sat Oct 24 20:06:11 2026: Inertia matrix is too close to singular at DOF 0. Check model. Time = 0.0000.
+
+WARNING Sat Oct 24 20:06:11 2026: Inertia matrix is too close to singular at DOF 0. Check model. Time = 0.0000.
+
+WARNING Sat Oct 24 20:18:19 2026: Inertia matrix is too close to singular at DOF 0. Check model. Time = 0.0000.
+
+WARNING Sat Oct 24 20:18:19 2026: Inertia matrix is too close to singular at DOF 0. Check model. Time = 0.0000.
+
+WARNING Sat Oct 24 20:29:59 2026: Inertia matrix is too close to singular at DOF 0. Check model. Time = 0.0000.
+
+WARNING Sat Oct 24 20:29:59 2026: Inertia matrix is too close to singular at DOF 0. Check model. Time = 0.0000.
+

@@ -45,6 +45,60 @@ The existing scene composition, home initialization and placement validations re
 
 No production simulation scripts are replaced as part of P0-005.02.
 
+
+## Construction and ownership contract
+
+SimulationInstance is constructed through two supported factories:
+
+- from_model_file(path)
+- from_robot_scene(panda_path)
+
+Each factory must return a newly allocated MjModel/MjData pair.
+
+Direct public construction, ordinary ownership-reference
+reassignment, deletion, copying and pickling are prohibited.
+
+The underlying MuJoCo objects remain mutable and must not be shared
+between independently controlled simulations.
+
+This is a cooperative ownership contract, not a security boundary.
+Private implementation methods and Python reflection must not be
+treated as protection against deliberately hostile caller code.
+
+## Validation requirements
+
+Required tests:
+
+- Fresh model/data allocation
+- Independent state buffers
+- Independent mutable model parameters
+- Rejection of ordinary ownership reassignment
+- Rejection of shallow and deep copying
+- Rejection of pickling
+- Repeated instance creation
+- Surviving-instance usability after garbage collection
+- Loader and scene-construction failure propagation
+- Independent sequential physics progression
+- Source MJCF immutability
+
+The real Franka Panda integration test must be run explicitly
+before claiming full-scene validation.
+
+A skipped integration test is not evidence of success.
+
+## Limitations
+
+- No security boundary against deliberate Python introspection
+- No public adoption of arbitrary model/data pairs
+- No guarantee of simultaneous thread-safe mutation
+- No reset, stepping API or resource-shutdown API
+- No automatic cloning of a running simulation
+- No robot reachability or grasp validation
+
+Simulation lifecycle functions belong to P0-006.
+Structural and joint-address validation belongs to P0-005.03 onward.
+
+
 ## 4. State Isolation
 
 Changes to one instance's:

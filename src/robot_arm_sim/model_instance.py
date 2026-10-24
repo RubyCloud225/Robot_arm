@@ -1,15 +1,20 @@
 
-"""P0-005.02 — Ownership of independent MuJoCo simulation instances.
+"""P0-005.02 — Independent MuJoCo model and state ownership.
 
-Each instance keeps strong references to its own compiled model and
-corresponding state. Creation must allocate a fresh model/state pair.
+An independent simulation owns one compiled MjModel and its matching
+MjData. Supported factories allocate both objects afresh.
 
-This module does not implement stepping, reset, rendering or cleanup.
-Those lifecycle behaviours belong to P0-006.
+This module does not provide stepping, reset, rendering or close().
+Those responsibilities belong to P0-006.
+
+Ownership is a cooperative application invariant, not a Python
+security boundary. Exposed MuJoCo objects remain mutable.
 """
 
-from dataclasses import dataclass
+from __future__ import annotations
+
 from pathlib import Path
+from typing import Any, SupportsIndex, final
 
 import mujoco
 
@@ -17,46 +22,148 @@ from .model_loader import load_model
 from .simulation import build_scene
 
 
-@dataclass(frozen=True, slots=True, eq=False)
+@final
 class SimulationInstance:
-    """Own a compiled MuJoCo model and its associated state.
+    """Retain one MuJoCo model and its corresponding simulation state.
 
-    Attributes:
-        model: Compiled model belonging to this simulation instance.
-        data: Mutable simulation state allocated for this model.
+    Supported construction:
+        from_model_file(path)
+        from_robot_scene(panda_path)
 
-    Notes:
-        The frozen dataclass prevents reassignment of the model/data
-        attributes. It does NOT make the underlying MuJoCo objects
-        immutable or thread-safe.
+    Invariants:
+        - Factories create distinct model/state pairs.
+        - Model and data references cannot be ordinarily reassigned.
+        - No second owning wrapper is created by copying.
+        - The pair remains referenced while the wrapper is alive.
 
-        Do not share model or data references across independently
-        controlled simulations.
+    Limitations:
+        The underlying MuJoCo objects are mutable.
+        Python reflection and deliberate reference sharing are not
+        prevented. This class is not a thread-safety mechanism.
     """
 
-    model: mujoco.MjModel
-    data: mujoco.MjData
+    # Avoid an instance dictionary and ordinary arbitrary attributes.
+    # Slots do not make the underlying MuJoCo objects immutable.
+    __slots__ = ("_model", "_data", "_sealed")
+
+    def __init__(self) -> None:
+        """Reject construction without a supported factory."""
+        raise TypeError(
+            "SimulationInstance must be created using "
+            "from_model_file() or from_robot_scene()"
+        )
+
+    @property
+    def model(self) -> mujoco.MjModel:
+        """Return the compiled model owned by this instance."""
+        return self._model
+
+    @property
+    def data(self) -> mujoco.MjData:
+        """Return the mutable state associated with this model."""
+        return self._data
+
+    def __setattr__(self, name: str, value: object) -> None:
+        """Reject ordinary mutation of the ownership wrapper."""
+        raise AttributeError(
+            "SimulationInstance ownership references are read-only"
+        )
+
+    def __delattr__(self, name: str) -> None:
+        """Reject ordinary deletion of ownership references."""
+        raise AttributeError(
+            "SimulationInstance ownership references cannot be deleted"
+        )
+
+    @classmethod
+    def _create(
+        cls,
+        model: mujoco.MjModel,
+        data: mujoco.MjData,
+    ) -> SimulationInstance:
+        """Create a wrapper for a pair returned by a trusted factory.
+
+        This private method is only for internal factory use.
+        It must never be used as a public adoption API.
+
+        The supplied pair is expected to have been allocated together.
+        Python MuJoCo does not expose a general ownership certificate
+        proving that an arbitrary MjData belongs to an MjModel.
+        """
+        if cls is not SimulationInstance:
+            raise TypeError(
+                "SimulationInstance subclass construction is unsupported"
+            )
+
+        if not isinstance(model, mujoco.MjModel):
+            raise TypeError("Expected mujoco.MjModel")
+
+        if not isinstance(data, mujoco.MjData):
+            raise TypeError("Expected mujoco.MjData")
+
+        # Bypass the intentionally disabled public constructor.
+        # No external user code runs between these assignments.
+        instance = object.__new__(cls)
+        object.__setattr__(instance, "_model", model)
+        object.__setattr__(instance, "_data", data)
+        object.__setattr__(instance, "_sealed", True)
+
+        return instance
 
     @classmethod
     def from_model_file(
-        cls, path: str | Path
-    ) -> "SimulationInstance":
-        """Create an instance from a standalone MJCF file.
+        cls,
+        path: str | Path,
+    ) -> SimulationInstance:
+        """Create a standalone simulation from an MJCF file.
 
-        Delegates path/error handling to the P0-005.01 loader.
-        Each invocation must produce a newly allocated model and state.
+        The P0-005.01 loader performs path validation, compilation
+        and matching MjData allocation.
+
+        No physics step is executed here.
+        Loader exceptions propagate to the caller.
         """
+        if cls is not SimulationInstance:
+            raise TypeError("Subclass factories are unsupported")
+
         model, data = load_model(path)
-        return cls(model=model, data=data)
+        return cls._create(model, data)
 
     @classmethod
     def from_robot_scene(
-        cls, panda_path: str | Path
-    ) -> "SimulationInstance":
-        """Create an instance of the existing Panda task scene.
+        cls,
+        panda_path: str | Path,
+    ) -> SimulationInstance:
+        """Create an independent composed Franka Panda scene.
 
-        Preserve build_scene's home-keyframe initialization,
-        scene composition and collision/placement validation.
+        Preserve the scene builder's existing home initialisation,
+        collision checks and placement validation.
+
+        The scene builder may call mj_forward() to calculate derived
+        state. This factory performs no physics stepping.
         """
+        if cls is not SimulationInstance:
+            raise TypeError("Subclass factories are unsupported")
+
         model, data = build_scene(panda_path)
-        return cls(model=model, data=data)
+        return cls._create(model, data)
+
+    def __copy__(self) -> SimulationInstance:
+        """Prevent shallow-copy aliases to the same MuJoCo state."""
+        raise TypeError(
+            "SimulationInstance cannot be copied; "
+            "create a fresh instance through a factory"
+        )
+
+    def __deepcopy__(self, memo: dict) -> SimulationInstance:
+        """Prevent implicit cloning with undefined state semantics."""
+        raise TypeError(
+            "SimulationInstance cannot be deep-copied; "
+            "create a fresh instance through a factory"
+        )
+
+    def __reduce_ex__(self, protocol: int) -> object:
+        """Prevent serialisation that bypasses factory allocation."""
+        raise TypeError(
+            "SimulationInstance cannot be pickled"
+        )
