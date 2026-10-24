@@ -266,18 +266,27 @@ def test_reset_does_not_call_mj_step(sim, monkeypatch):
     assert sim.state is SimulatorState.LOADED
 
 
-def test_reset_does_not_call_mj_forward_yet(sim, monkeypatch):
-    """P0-006.04 retains responsibility for forward refresh."""
-    def forbidden_forward(*args, **kwargs):
-        raise AssertionError(
-            "mj_forward belongs to P0-006.04"
-        )
+
+def test_reset_refreshes_forward_state(sim, monkeypatch):
+    """P0-006.04 requires a forward refresh after reset."""
+    original_forward = mujoco.mj_forward
+    calls = []
+
+    def recording_forward(model, data):
+        calls.append((model, data))
+        return original_forward(model, data)
 
     monkeypatch.setattr(
-        mujoco, "mj_forward", forbidden_forward
+        mujoco,
+        "mj_forward",
+        recording_forward,
     )
 
     sim.reset()
+
+    assert len(calls) == 1
+    assert calls[0][0] is sim.model
+    assert calls[0][1] is sim.data
 
 
 def test_native_reset_is_called_once(sim, monkeypatch):

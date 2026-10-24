@@ -16,6 +16,7 @@ import math
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
+from random import seed
 
 import mujoco
 import numpy as np
@@ -184,27 +185,35 @@ class Simulator:
         self._state = SimulatorState.LOADED
 
     def reset(self, seed: int | None = None) -> None:
-        """Restore the complete supported MuJoCo reset state.
+        """Restore the Panda scene to a consistent initial state.
 
-        Steps:
-        1. Validate the lifecycle and baseline.
-        2. Reset MuJoCo-managed data, including transient buffers.
-        3. Restore captured positions, velocities, commands,
-           actuator activations and clock.
-        4. Restore the fixed target body's initial placement.
+        P0-006.02:
+            Restore robot, gripper, ball, target and time.
 
-        Deliberately does not call mj_forward or mj_step.
+        P0-006.03:
+            Clear transient MuJoCo data using mj_resetData()
+            and restore the captured actuator activation.
+
+        P0-006.04:
+            Recompute forward kinematics, geometry transforms,
+            velocities, accelerations and current contacts
+            using mj_forward().
+
+        The same MjModel and MjData objects are retained.
+
+        Reset never calls mj_step() or advances simulation time.
         """
         instance = self._require_loaded()
 
-        # Seed-driven random initial conditions are deferred to
-        # P0-010. Reject rather than silently ignore the request.
+        # Seeded random resets remain outside P0-006.
+        # Reject before modifying any simulation state.
         if seed is not None:
             raise NotImplementedError(
                 "Seeded resets are reserved for P0-010"
             )
 
         snapshot = self._reset_snapshot
+
         if snapshot is None:
             raise SimulatorLifecycleError(
                 "Loaded simulator has no reset snapshot"
@@ -213,6 +222,8 @@ class Simulator:
         model = instance.model
         data = instance.data
 
+        # The fixed target belongs to MjModel rather than qpos.
+        # Resolve it by name to avoid relying on a numeric body ID.
         target_id = int(
             mujoco.mj_name2id(
                 model,
@@ -220,14 +231,19 @@ class Simulator:
                 "target",
             )
         )
+
         if target_id < 0:
             raise SimulatorLifecycleError(
                 "Cannot reset: target body is missing"
             )
 
-        # Validate all dimensions before any reset writes.
-        # In particular, actuator activation dimensions (na)
-        # are not necessarily the same as actuator controls (nu).
+        # Perform all ordinary compatibility checks before
+        # invoking the native reset. An invalid snapshot must
+        # not result in partially cleared simulation data.
+        #
+        # Note that actuator activation (na) is separate from
+        # actuator control (nu), so their sizes must not be
+        # assumed identical.
         if (
             data.qpos.shape != snapshot.qpos.shape
             or data.qvel.shape != snapshot.qvel.shape
@@ -241,32 +257,53 @@ class Simulator:
                 "do not match the initial snapshot"
             )
 
-        # Native MuJoCo reset clears more than qpos/qvel:
-        # externally applied forces, solver warm-start values
-        # and other engine-managed transient state are reset.
+        # Step 1 — Clear MuJoCo-managed transient state.
         #
-        # This is performed BEFORE restoring the composed task
-        # baseline, because the task's valid initial controls
-        # and joint pose need not match generic defaults.
+        # This clears stale externally applied forces,
+        # solver warm-start values and other resettable
+        # engine-owned data.
+        #
+        # The native reset also replaces primary state with
+        # MuJoCo defaults, so the task-specific baseline
+        # must be restored immediately afterwards.
         mujoco.mj_resetData(model, data)
 
-        # Restore the precise state captured after build_scene.
-        # Full qpos copying preserves the free-ball quaternion.
+        # Step 2 — Restore the original composed scene.
+        #
+        # Use full-array copies rather than reconstructing
+        # individual joint indices. This preserves all
+        # articulated joints and the ball's four-component
+        # orientation quaternion.
         np.copyto(data.qpos, snapshot.qpos)
         np.copyto(data.qvel, snapshot.qvel)
+
+        # Restore initial actuator commands and activation.
+        # These must not be blindly set to zero.
         np.copyto(data.ctrl, snapshot.ctrl)
         np.copyto(data.act, snapshot.act)
 
-        # The goal marker is a fixed body in the compiled model.
+        # Restore the target's fixed model-space position.
+        # This must happen before forward kinematics so its
+        # world-space transform is calculated correctly.
         np.copyto(
             model.body_pos[target_id],
             snapshot.target_position,
         )
 
+        # Restore the exact baseline simulation clock.
         data.time = snapshot.time
 
-        # P0-006.04 will refresh derived transforms and contacts.
-        # There must be no physics advance in this ticket.
+        # Step 3 — Recompute derived simulation state.
+        #
+        # This updates body/site/geometry transforms, current
+        # contacts and other MuJoCo forward-dynamics outputs.
+        #
+        # mj_forward does not integrate qpos or qvel and does
+        # not advance data.time.
+        #
+        # No physics step is performed here.
+        mujoco.mj_forward(model, data)
+
 
     def step(
         self,

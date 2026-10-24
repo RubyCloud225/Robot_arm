@@ -521,7 +521,72 @@ robot-arm-simulator/
 
   **Status:** COMPLETE — user-reported tests passed.
 
-- [ ] P0-006.04 Recompute derived kinematics/contact data after state writes with the correct MuJoCo forward/step operation.
+
+- [x] P0-006.04 Recompute derived kinematics/contact data
+  after state writes with the correct MuJoCo forward operation.
+
+  **Evidence:**
+  - src/robot_arm_sim/simulator.py
+  - tests/test_simulator_forward.py
+  - tests/test_simulator_transients.py
+  - docs/simulator_forward_reset.md
+
+  **Implementation:**
+  Extended Simulator.reset() to invoke mujoco.mj_forward()
+  after restoring the initial simulation state.
+
+  The reset sequence now:
+  1. Validates the simulator lifecycle and reset arguments.
+  2. Validates the captured reset snapshot.
+  3. Clears transient state using mujoco.mj_resetData().
+  4. Restores qpos, qvel, ctrl and actuator activation.
+  5. Restores the target body's initial position.
+  6. Restores initial simulation time.
+  7. Recomputes derived state using mujoco.mj_forward().
+
+  **Validation coverage:**
+  - Recalculation of body world positions (xpos).
+  - Recalculation of body orientations (xquat).
+  - Recalculation of site world positions (site_xpos).
+  - Recalculation of collision geometry positions (geom_xpos).
+  - Verification of ball free-joint/world-position consistency.
+  - Verification of restored target marker position.
+  - Removal of stale contact data after reset.
+  - Verification of current contact geometry pairs.
+  - Preservation of primary qpos, qvel and ctrl values.
+  - Preservation of the initial simulation clock.
+  - Preservation of cleared applied forces.
+  - Exactly one explicit mj_forward() call per reset.
+  - Verification that forward computation occurs after
+    primary-state restoration.
+  - No mj_step() calls or physics time advancement.
+  - Preservation of MjModel and MjData object identity.
+  - Deterministic derived state across repeated resets.
+  - Rejection of invalid lifecycle operations.
+  - Rejection of unsupported seeded resets.
+  - Isolation between independent simulator instances.
+  - Headless execution without viewer dependencies.
+
+  **Regression test results:**
+  - Command: ./scripts/run_tests.py
+  - Platform: macOS (Darwin)
+  - Python: 3.14.6
+  - Tests collected: 502
+  - Passed: 502
+  - Failed: 0
+  - Skipped: 0
+  - Execution time: 3.03 seconds
+
+  **Known limitations:**
+  - Physics stepping is not yet implemented in Simulator.step().
+  - Actuator control and movement validation remain separate.
+  - Controller-period scheduling is not yet implemented.
+  - Reset determinism across operating systems is not guaranteed.
+  - Automated reaching, grasping and pick-and-place are outside
+    the scope of this ticket.
+
+  **Status:** COMPLETE — validated.
+
 - [ ] P0-006.05 Define whether a step represents **one physics step** or **one controller period**. Document it and test the time advance.
 - [ ] P0-006.06 Ensure controller-period stepping has a well-defined integer relationship with the chosen physics timestep, or handle non-integer ratios deliberately.
 - [ ] P0-006.07 Track simulation time in seconds and count physics/controller steps unambiguously.
