@@ -169,6 +169,12 @@ robot-arm-simulator/
 - [ ] P0-007.08 Implement a safe gripper-close command and measure achieved closure in an unobstructed initial configuration.
 - [ ] P0-007.09 Ensure commands do not drive joints beyond model limits in the smoke test; log any unexpected constraint violation.
 - [ ] P0-007.10 Document limits of P0 control: direct verified actuator commands only; Cartesian inverse kinematics and grasp sequences are not required yet.
+- [ ] P0-007.11 Record the initial end-effector position and ball position in world coordinates.
+- [ ] P0-007.12 Determine whether the ball is reachable within the Panda's joint limits.
+- [ ] P0-007.13 Identify which joint movements bring the gripper toward the ball.
+- [ ] P0-007.14 Verify that commanded actuator movements produce the expected joint motion.
+- [ ] P0-007.15 Test a collision-safe configuration that positions the gripper near the ball.
+- [ ] P0-007.16 Document the reachable workspace and any restrictions caused by the table or pedestal.
 
 **Acceptance evidence:** At least one arm joint moves in response to a valid command; opening and closing are demonstrable; command bounds and invalid inputs are tested.
 
