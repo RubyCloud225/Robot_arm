@@ -126,11 +126,30 @@ python -m robot_arm_sim
 python scripts/run_simulation.py
 ```
 
+To launch the demo with the selected Franka Panda model attached, first place a
+locally obtained and reviewed `panda.xml` and its referenced assets under
+`.cache/robot_models/franka_emika_panda/`, then run:
+
+```sh
+python -m robot_arm_sim --robot
+```
+
+Alternatively, supply the path to `panda.xml` explicitly:
+
+```sh
+python -m robot_arm_sim --robot --robot-model /path/to/franka_emika_panda/panda.xml
+```
+
+The model is not downloaded automatically: its upstream revision and mesh
+provenance still require review. See [docs/assets_and_licenses.md](docs/assets_and_licenses.md).
+
 Run a headless physics smoke check with:
 
 ```sh
 python -m robot_arm_sim --headless --steps 1000
 ```
+
+The robot scene can also be run headlessly with `--robot --headless`.
 
 The installed `robot-arm-sim` command provides the same entry point.
 The default configuration is packaged with the project. To use a custom TOML file,

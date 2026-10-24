@@ -7,6 +7,7 @@ src/robot_arm_sim/cli.py
 src/robot_arm_sim/config.py
 src/robot_arm_sim/controls.py
 src/robot_arm_sim/model_ids.py
+src/robot_arm_sim/model_loader.py
 src/robot_arm_sim/observations.py
 src/robot_arm_sim/simulation.py
 src/robot_arm_sim/viewer.py
@@ -18,4 +19,15 @@ src/robot_arm_sim.egg-info/requires.txt
 src/robot_arm_sim.egg-info/top_level.txt
 src/robot_arm_sim/assets/default.toml
 src/robot_arm_sim/assets/demo.xml
+tests/test_ball.py
+tests/test_cli.py
 tests/test_config.py
+tests/test_contact_filters.py
+tests/test_floor.py
+tests/test_model_loader.py
+tests/test_robot_placement.py
+tests/test_scene_settings.py
+tests/test_scene_units.py
+tests/test_simulation.py
+tests/test_spawn_and_target.py
+tests/test_table.py

@@ -129,7 +129,7 @@ robot-arm-simulator/
 
 **Goal:** Fail early when an asset or MJCF definition is broken.
 
-- [ ] P0-005.01 Implement an explicit model loader with useful errors for missing files and invalid XML.
+- [x] P0-005.01 Implement an explicit model loader with useful errors for missing files and invalid XML. *(Evidence: `src/robot_arm_sim/model_loader.py`, `tests/test_model_loader.py`, `docs/model_loading.md` — validated successful MuJoCo model loading, missing files, invalid paths, malformed XML/MJCF, missing dependencies and model compilation errors. Tests also verify exception chaining, independent MjModel/MjData allocation, preservation of source files and no unintended physics stepping. P0-005.01 tests passed; model-loader integration into existing scene composition remains outside this task.)*
 - [ ] P0-005.02 Construct and own a fresh `mujoco.MjModel` and `mujoco.MjData` for each independent simulation instance (or document a safe explicit ownership model).
 - [ ] P0-005.03 Resolve all required joints, actuators, sites and bodies from **names**, and validate their existence before stepping.
 - [ ] P0-005.04 Cache validated model IDs without assuming joint IDs, `qpos` indices and actuator indices are interchangeable.
