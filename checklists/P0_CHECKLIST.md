@@ -646,7 +646,70 @@ robot-arm-simulator/
 
   **Status:** COMPLETE — user-reported tests passed.
 
-- [ ] P0-006.06 Ensure controller-period stepping has a well-defined integer relationship with the chosen physics timestep, or handle non-integer ratios deliberately.
+- [x] P0-006.06 Ensure controller-period stepping has an
+  integer relationship to the physics timestep, or handle
+  noninteger periods deliberately.
+
+  **Evidence:**
+  - src/robot_arm_sim/simulator.py
+  - tests/test_simulator_controller_period.py
+  - docs/simulator_controller_period.md
+  - src/robot_arm_sim/config.py
+
+  **Implementation:**
+  - Added _controller_substep_count() to calculate the
+    required number of physics steps per controller period.
+  - Added Simulator.step_controller_period().
+  - Uses the current compiled model physics timestep.
+  - Requires a positive integer number of physics substeps.
+  - Rejects materially noninteger timing relationships.
+  - Permits small floating-point representation differences.
+  - Reuses the existing Simulator.step() implementation.
+  - Preserves actuator validation and control=None behaviour.
+  - Holds the selected actuator command across all substeps.
+  - Does not introduce controller or AI behaviour logic.
+  - Does not replace MjModel or MjData.
+
+  **Default timing configuration:**
+  - Physics timestep: 0.002 seconds.
+  - Controller period: 0.040 seconds.
+  - Physics steps per controller period: 20.
+
+  **Validation coverage:**
+  - Compatible controller-period/timestep ratios.
+  - Rejection of incompatible fractional ratios.
+  - Rejection of periods shorter than one physics step.
+  - Rejection of zero, negative and nonfinite periods.
+  - Rejection of invalid argument types.
+  - Floating-point compatibility tolerance.
+  - Exactly 20 physics steps for the default period.
+  - Correct simulation time advancement.
+  - Constant actuator controls throughout each period.
+  - Preservation of existing controls when control=None.
+  - Validation before actuator writes or physics stepping.
+  - Rejection of invalid actuator commands.
+  - Accumulated time across multiple controller periods.
+  - Mixed physics-step and controller-period execution.
+  - Reset after controller-period stepping.
+  - Independent simulator instance isolation.
+  - Lifecycle guards.
+  - Public Simulator method availability.
+
+  **Regression results:**
+  - Command: ./scripts/run_tests.py
+  - Tests passed: 602
+  - Failures: 0 (user reported)
+  - Result: PASS
+
+  **Known limitations:**
+  - Physics and controller step counters remain P0-006.07.
+  - No learned controller or behavioural policy is implemented.
+  - No wall-clock real-time execution guarantee.
+  - No inverse kinematics or autonomous manipulation.
+  - Noninteger controller periods are deliberately rejected.
+
+  **Status:** COMPLETE — user-reported tests passed.
+
 - [ ] P0-006.07 Track simulation time in seconds and count physics/controller steps unambiguously.
 - [ ] P0-006.08 Guard against use before initialisation, use after closure, invalid action shapes and illegal substep counts.
 - [ ] P0-006.09 Allow simulator logic to execute without creating any GUI or requiring a display server.

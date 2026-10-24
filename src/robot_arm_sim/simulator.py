@@ -100,6 +100,82 @@ def _capture_initial_state(
     )
 
 
+def _controller_substep_count(
+    period: float,
+    timestep: float,
+) -> int:
+    """Convert a controller period into exact physics substeps.
+
+    A controller update may span several physics integrations,
+    but those integrations must all have the same model timestep.
+
+    Reject incompatible periods instead of silently choosing
+    a shorter or longer simulated duration.
+
+    This function performs no simulation writes and does not
+    invoke MuJoCo.
+    """
+    # bool is technically an int in Python, but True and False
+    # are not meaningful duration arguments.
+    for name, value in (
+        ("controller period", period),
+        ("physics timestep", timestep),
+    ):
+        if isinstance(value, (bool, np.bool_)):
+            raise TypeError(
+                f"{name} must be a real numeric value"
+            )
+
+        if not isinstance(
+            value,
+            (int, float, np.integer, np.floating),
+        ):
+            raise TypeError(
+                f"{name} must be a real numeric value"
+            )
+
+        if not np.isfinite(value) or value <= 0:
+            raise ValueError(
+                f"{name} must be finite and positive"
+            )
+
+    # Dividing durations expressed in seconds gives a
+    # dimensionless number of physics steps.
+    ratio = float(period) / float(timestep)
+
+    # Extremely large ratios can overflow to infinity.
+    # They cannot represent a usable finite substep count.
+    if not math.isfinite(ratio):
+        raise ValueError(
+            "controller period / timestep is not finite"
+        )
+
+    rounded = round(ratio)
+
+    # Require at least one complete physics integration.
+    if rounded < 1:
+        raise ValueError(
+            "controller period is shorter than one "
+            "physics timestep"
+        )
+
+    # Match the tolerance already used by config.py.
+    # This permits ordinary floating-point representation
+    # noise, but rejects materially noninteger ratios.
+    if not math.isclose(
+        ratio,
+        rounded,
+        rel_tol=1e-9,
+        abs_tol=1e-9,
+    ):
+        raise ValueError(
+            "controller period must be an integer "
+            "multiple of the physics timestep"
+        )
+
+    return int(rounded)
+
+
 class Simulator:
     """Own one composed Panda scene and its reset baseline.
 
@@ -304,7 +380,63 @@ class Simulator:
         #
         # No physics step is performed here.
         mujoco.mj_forward(model, data)
-        
+
+    
+    def step_controller_period(
+        self, control: object = None, *, period: float,) -> None:
+        """Advance exactly one nominal controller period.
+
+        The requested controller duration is converted into
+        a positive integer number of MuJoCo physics substeps.
+
+        One actuator command is applied for the whole period.
+
+        Parameters
+        ----------
+        control:
+            Full raw actuator vector in compiled model order,
+            or None to preserve the current actuator commands.
+
+        period:
+            Controller period in seconds. Must be finite,
+            positive and an integer multiple of the current
+            model physics timestep, allowing only minor
+            floating-point representation differences.
+
+        Notes
+        -----
+        This is a timing convenience layer, not a new physics
+        integrator and not a controller policy.
+
+        Existing Simulator.step() handles control validation,
+        actuator writes and the individual mj_step calls.
+
+        Application-level counters belong to P0-006.07.
+        """
+        instance = self._require_loaded()
+
+        # Read the current compiled model timestep.
+        # Do not assume the packaged default is always used.
+        timestep = float(instance.model.opt.timestep)
+
+        # Validate timing before delegating to the physics
+        # stepping interface. An invalid period must cause
+        # no actuator changes or physics integration.
+        n_substeps = _controller_substep_count(
+            period,
+            timestep,
+        )
+
+        # Reuse the existing P0-006.05 path. This preserves
+        # its actuator validation, control=None behaviour,
+            # lifecycle guards and error semantics.
+        self.step(
+            control=control,
+            n_substeps=n_substeps,
+        )
+
+        return
+    
     def step(self, control: object = None, *, n_substeps: int = 1,) -> None:
         """Advance the simulation by an exact number of physics steps.
         P0-006.05 defines one substep as one mujoco.mj_step()
@@ -345,7 +477,7 @@ class Simulator:
         instance = self._require_loaded()
         model = instance.model
         data = instance.data
-
+        
         # Reject booleans explicitly: bool is a subclass of int
         # in Python, but True must never silently mean one step.
         if type(n_substeps) is not int:
@@ -463,7 +595,7 @@ class Simulator:
                         f"its permitted range [{low}, {high}]: "
                         f"{value}"
                     )
-
+        
         # The remaining code stays outside the conditional.
         #
         # If control was None, validated_control stays None
