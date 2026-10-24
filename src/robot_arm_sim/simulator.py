@@ -1,17 +1,18 @@
 
-"""P0-006.02 — Simulator lifecycle and deterministic state reset.
+"""P0-006.03 — Simulator lifecycle and transient-state reset.
 
-Simulator owns one independently compiled Panda scene.
+Own an independently compiled Panda simulation and restore its
+initial physical state without recompilation or physics stepping.
 
-P0-006.02 captures a baseline immediately after loading and
-restores primary MuJoCo state without replacing MjModel/MjData.
+The reset procedure uses MuJoCo's native reset operation to clear
+transient simulation data, then restores the captured task baseline.
 
-Transient solver cleanup, forward-kinematic refresh and
-physics stepping are reserved for subsequent P0-006 tickets.
+Forward kinematics/contact recomputation belongs to P0-006.04.
 """
 
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from enum import Enum
 from pathlib import Path
@@ -23,7 +24,7 @@ from .model_instance import SimulationInstance
 
 
 class SimulatorState(str, Enum):
-    """Public lifecycle states."""
+    """Explicit public lifecycle states."""
 
     NEW = "NEW"
     LOADED = "LOADED"
@@ -36,41 +37,34 @@ class SimulatorLifecycleError(RuntimeError):
 
 @dataclass(frozen=True, slots=True, eq=False)
 class _ResetSnapshot:
-    """Private baseline for restoring primary simulation state.
+    """Independent baseline captured after successful scene loading.
 
-    Each array is copied from the loaded model or data.
-    References to the live MuJoCo arrays are never stored.
-
-    Arrays are made read-only to reduce the risk of accidental
-    corruption of the stored reset baseline.
+    The NumPy arrays contain copies of the initial model/data
+    values rather than views into MuJoCo's mutable buffers.
     """
 
     qpos: np.ndarray
     qvel: np.ndarray
     ctrl: np.ndarray
+    act: np.ndarray
     target_position: np.ndarray
     time: float
 
 
 def _readonly_copy(values: np.ndarray) -> np.ndarray:
-    """Capture an independent, read-only NumPy array."""
-    snapshot = np.array(values, copy=True)
-    snapshot.setflags(write=False)
-    return snapshot
+    """Make an independent, read-only copy of a MuJoCo array."""
+    result = np.array(values, copy=True)
+    result.setflags(write=False)
+    return result
 
 
 def _capture_initial_state(
     instance: SimulationInstance,
 ) -> _ResetSnapshot:
-    """Capture the exact initial state produced by build_scene().
+    """Capture the composed Panda's initial primary state.
 
-    The target is represented by a fixed MuJoCo body. Unlike
-    the free ball, its placement lives in model.body_pos,
-    rather than in data.qpos.
-
-    All qpos/qvel coordinates are captured as full arrays to
-    preserve the Panda's actual home pose and the ball's
-    translation and quaternion without manual reconstruction.
+    Target position is stored in MjModel.body_pos because the
+    goal is a fixed body rather than a free-joint object.
     """
     model = instance.model
     data = instance.data
@@ -82,16 +76,21 @@ def _capture_initial_state(
             "target",
         )
     )
-
     if target_id < 0:
         raise ValueError(
             "Cannot capture reset state: target body is missing"
+        )
+
+    if not math.isfinite(float(data.time)):
+        raise ValueError(
+            "Cannot capture reset state: time is not finite"
         )
 
     return _ResetSnapshot(
         qpos=_readonly_copy(data.qpos),
         qvel=_readonly_copy(data.qvel),
         ctrl=_readonly_copy(data.ctrl),
+        act=_readonly_copy(data.act),
         target_position=_readonly_copy(
             model.body_pos[target_id]
         ),
@@ -100,15 +99,15 @@ def _capture_initial_state(
 
 
 class Simulator:
-    """Own one Panda model/data pair and its reset baseline.
+    """Own one composed Panda scene and its reset baseline.
 
-    The simulator begins in NEW. load() allocates the scene,
-    captures its initial primary state, and enters LOADED.
+    Lifecycle:
+        NEW -> load() -> LOADED -> close() -> CLOSED
 
-    reset() restores those primary values without replacing
-    MjModel or MjData.
+    The loaded MjModel and MjData objects are retained across
+    reset calls. Closing permanently releases wrapper ownership.
 
-    close() permanently transitions to CLOSED.
+    This class does not create a viewer or rendering context.
     """
 
     __slots__ = (
@@ -119,7 +118,7 @@ class Simulator:
     )
 
     def __init__(self, panda_path: str | Path) -> None:
-        """Record a model path without loading a model."""
+        """Record the model location without compiling anything."""
         if not isinstance(panda_path, (str, Path)):
             raise TypeError("panda_path must be str or Path")
 
@@ -138,11 +137,11 @@ class Simulator:
 
     @property
     def is_loaded(self) -> bool:
-        """Whether this wrapper owns a loaded simulation."""
+        """Whether a model/data pair is currently available."""
         return self._state is SimulatorState.LOADED
 
     def _require_loaded(self) -> SimulationInstance:
-        """Reject model/state access outside LOADED."""
+        """Enforce the LOADED state before accessing simulation data."""
         if (
             self._state is not SimulatorState.LOADED
             or self._instance is None
@@ -151,27 +150,23 @@ class Simulator:
                 "Simulator must be loaded before this operation; "
                 f"current state is {self._state.value}"
             )
-
         return self._instance
 
     @property
     def model(self) -> mujoco.MjModel:
-        """Return the currently loaded compiled model."""
+        """Return the currently owned compiled model."""
         return self._require_loaded().model
 
     @property
     def data(self) -> mujoco.MjData:
-        """Return the live, mutable MuJoCo simulation state."""
+        """Return the currently owned mutable simulation state."""
         return self._require_loaded().data
 
     def load(self) -> None:
-        """Build the scene and capture a per-instance reset state.
+        """Create a fresh scene and capture its reset baseline.
 
-        All work must succeed before entering LOADED.
-
-        If building the scene or capturing the baseline fails,
-        the simulator stays in NEW without publishing a partial
-        model/data pair or an incomplete reset snapshot.
+        Publish the loaded instance only after scene construction
+        and baseline capture have both succeeded.
         """
         if self._state is not SimulatorState.NEW:
             raise SimulatorLifecycleError(
@@ -182,34 +177,28 @@ class Simulator:
         instance = SimulationInstance.from_robot_scene(
             self._panda_path
         )
-
         snapshot = _capture_initial_state(instance)
 
-        # Publish both objects only once initialization succeeds.
         self._instance = instance
         self._reset_snapshot = snapshot
         self._state = SimulatorState.LOADED
 
     def reset(self, seed: int | None = None) -> None:
-        """Restore the original robot and task primary state.
+        """Restore the complete supported MuJoCo reset state.
 
-        Reuses the same model/data objects. Restores:
-        - All robot, finger and ball position coordinates.
-        - All robot, finger and ball velocity coordinates.
-        - All actuator control entries.
-        - The target's fixed body position.
-        - Initial simulation time.
+        Steps:
+        1. Validate the lifecycle and baseline.
+        2. Reset MuJoCo-managed data, including transient buffers.
+        3. Restore captured positions, velocities, commands,
+           actuator activations and clock.
+        4. Restore the fixed target body's initial placement.
 
-        A non-None seed is rejected for now because seeded
-        random reset behaviour has not been implemented.
-        Silently accepting and ignoring a seed would create
-        misleading reproducibility guarantees.
-
-        Does not clear applied forces or solver transients
-        (006.03), recompute kinematics (006.04), or step physics.
+        Deliberately does not call mj_forward or mj_step.
         """
         instance = self._require_loaded()
 
+        # Seed-driven random initial conditions are deferred to
+        # P0-010. Reject rather than silently ignore the request.
         if seed is not None:
             raise NotImplementedError(
                 "Seeded resets are reserved for P0-010"
@@ -231,19 +220,19 @@ class Simulator:
                 "target",
             )
         )
-
         if target_id < 0:
             raise SimulatorLifecycleError(
                 "Cannot reset: target body is missing"
             )
 
-        # Check array dimensions before performing any writes.
-        # This catches misuse of a baseline with incompatible
-        # state buffers rather than silently truncating data.
+        # Validate all dimensions before any reset writes.
+        # In particular, actuator activation dimensions (na)
+        # are not necessarily the same as actuator controls (nu).
         if (
             data.qpos.shape != snapshot.qpos.shape
             or data.qvel.shape != snapshot.qvel.shape
             or data.ctrl.shape != snapshot.ctrl.shape
+            or data.act.shape != snapshot.act.shape
             or model.body_pos[target_id].shape
             != snapshot.target_position.shape
         ):
@@ -252,24 +241,32 @@ class Simulator:
                 "do not match the initial snapshot"
             )
 
-        # Copy the actual captured values. Do not regenerate
-        # joint states from IDs or convert the ball quaternion.
+        # Native MuJoCo reset clears more than qpos/qvel:
+        # externally applied forces, solver warm-start values
+        # and other engine-managed transient state are reset.
+        #
+        # This is performed BEFORE restoring the composed task
+        # baseline, because the task's valid initial controls
+        # and joint pose need not match generic defaults.
+        mujoco.mj_resetData(model, data)
+
+        # Restore the precise state captured after build_scene.
+        # Full qpos copying preserves the free-ball quaternion.
         np.copyto(data.qpos, snapshot.qpos)
         np.copyto(data.qvel, snapshot.qvel)
         np.copyto(data.ctrl, snapshot.ctrl)
+        np.copyto(data.act, snapshot.act)
 
-        # Restore the fixed goal body. It has no qpos entry.
+        # The goal marker is a fixed body in the compiled model.
         np.copyto(
             model.body_pos[target_id],
             snapshot.target_position,
         )
 
-        # Restore the original simulation clock.
         data.time = snapshot.time
 
-        # No mj_forward(), mj_resetData() or mj_step() here.
-        # Those semantics are handled explicitly in later
-        # lifecycle tickets.
+        # P0-006.04 will refresh derived transforms and contacts.
+        # There must be no physics advance in this ticket.
 
     def step(
         self,
@@ -284,11 +281,7 @@ class Simulator:
         )
 
     def close(self) -> None:
-        """Release wrapper-owned references permanently.
-
-        External MuJoCo references retained by callers may
-        remain alive. Repeated closure is harmless.
-        """
+        """Release wrapper references and permanently close."""
         if self._state is SimulatorState.CLOSED:
             return
 

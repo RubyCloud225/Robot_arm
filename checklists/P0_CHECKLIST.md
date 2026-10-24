@@ -485,7 +485,42 @@ robot-arm-simulator/
 
   **Status:** COMPLETE — validated.
 
-- [ ] P0-006.03 Clear stale applied forces, controls, warm-start artifacts or other transient state as appropriate before producing reset observations.
+
+- [x] P0-006.03 Clear stale applied forces, controls,
+  warm-start artifacts and other appropriate transient state
+  before producing reset observations.
+
+  **Evidence:**
+  - src/robot_arm_sim/simulator.py
+  - tests/test_simulator_transients.py
+  - docs/simulator_transient_reset.md
+
+  **Implemented functionality:**
+  - Uses mujoco.mj_resetData() to clear transient state.
+  - Clears applied generalized forces (qfrc_applied).
+  - Clears external body forces and torques (xfrc_applied).
+  - Clears solver acceleration warm-start (qacc_warmstart).
+  - Restores captured actuator activation state (act).
+  - Restores initial actuator commands (ctrl).
+  - Preserves robot, gripper and ball reset configuration.
+  - Restores target placement and simulation time.
+  - Retains the existing MjModel and MjData objects.
+  - Rejects invalid reset requests before native reset.
+  - Does not recompile the model or advance physics.
+  - Supports repeated resets and independent instances.
+
+  **Validation:**
+  - User reports that the full test suite passed.
+  - No failure details reported for P0-006.03.
+  - Exact test count, versions and execution time
+    should be copied from the latest test log.
+
+  **Limitations:**
+  Derived transforms and contact information are not
+  yet refreshed after reset.
+
+  **Status:** COMPLETE — user-reported tests passed.
+
 - [ ] P0-006.04 Recompute derived kinematics/contact data after state writes with the correct MuJoCo forward/step operation.
 - [ ] P0-006.05 Define whether a step represents **one physics step** or **one controller period**. Document it and test the time advance.
 - [ ] P0-006.06 Ensure controller-period stepping has a well-defined integer relationship with the chosen physics timestep, or handle non-integer ratios deliberately.
