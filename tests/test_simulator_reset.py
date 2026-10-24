@@ -346,7 +346,24 @@ def test_snapshot_arrays_are_read_only(sim):
         assert array.flags.writeable is False
 
 
-def test_step_remains_unimplemented(sim):
-    """Reset implementation must not enable motion prematurely."""
-    with pytest.raises(NotImplementedError):
-        sim.step()
+
+def test_step_then_reset_restores_original_state(sim):
+    """P0-006.05 stepping must coexist with reset behaviour."""
+    original_qpos = sim.data.qpos.copy()
+    original_qvel = sim.data.qvel.copy()
+    original_time = float(sim.data.time)
+
+    sim.step(n_substeps=3)
+    assert sim.data.time > original_time
+
+    sim.reset()
+
+    np.testing.assert_array_equal(
+        sim.data.qpos,
+        original_qpos,
+    )
+    np.testing.assert_array_equal(
+        sim.data.qvel,
+        original_qvel,
+    )
+    assert sim.data.time == original_time

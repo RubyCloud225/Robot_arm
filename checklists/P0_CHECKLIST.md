@@ -587,7 +587,65 @@ robot-arm-simulator/
 
   **Status:** COMPLETE — validated.
 
-- [ ] P0-006.05 Define whether a step represents **one physics step** or **one controller period**. Document it and test the time advance.
+
+- [x] P0-006.05 Define whether a step is one physics step
+  or one controller period; document and test time advance.
+
+  **Evidence:**
+  - src/robot_arm_sim/simulator.py
+  - tests/test_simulator_stepping.py
+  - tests/test_simulator_lifecycle.py
+  - tests/test_simulator_reset.py
+  - docs/simulator_stepping.md
+
+  **Implementation:**
+  - Defined one substep as exactly one mujoco.mj_step().
+  - Implemented Simulator.step(control=None, n_substeps=1).
+  - Supports multiple consecutive physics substeps.
+  - Uses the compiled model's physics timestep.
+  - Holds the supplied actuator command across substeps.
+  - Preserves existing actuator controls when control=None.
+  - Accepts full actuator vectors in compiled actuator order.
+  - Does not interpret raw actuator controls as joint angles.
+  - Validates actuator command shape, type and finite values.
+  - Validates enabled actuator control ranges.
+  - Rejects invalid substep counts and physics timesteps.
+  - Rejects invalid commands before modifying controls
+    or advancing simulation time.
+  - Preserves MjModel and MjData object identity.
+  - Supports headless physics stepping.
+  - Preserves reset functionality following physics stepping.
+
+  **Validation coverage:**
+  - Single-step physics time advancement.
+  - Multiple substep counts and cumulative time.
+  - Configured timestep usage.
+  - Ball movement under gravity.
+  - Valid actuator command application.
+  - Preservation of existing controls with control=None.
+  - Regression test preventing NumPy conversion of None.
+  - Rejection of malformed, nonfinite and out-of-range controls.
+  - Verification of exactly N mujoco.mj_step() calls.
+  - Constant control values throughout a substep batch.
+  - Independent simulator instance isolation.
+  - Reset after physical stepping.
+  - Lifecycle guards and headless operation.
+
+  **Regression results:**
+  - Command: ./scripts/run_tests.py
+  - Tests passed: 558
+  - Failures: 0 (reported)
+  - Result: PASS
+
+  **Known limitations:**
+  - Controller-period stepping is deferred to P0-006.06.
+  - Explicit physics/controller counters are deferred to P0-006.07.
+  - Full actuator control behaviour is deferred to P0-007.
+  - No autonomous behaviour or movement planning is implemented.
+  - Valid actuator commands do not guarantee safe trajectories.
+
+  **Status:** COMPLETE — user-reported tests passed.
+
 - [ ] P0-006.06 Ensure controller-period stepping has a well-defined integer relationship with the chosen physics timestep, or handle non-integer ratios deliberately.
 - [ ] P0-006.07 Track simulation time in seconds and count physics/controller steps unambiguously.
 - [ ] P0-006.08 Guard against use before initialisation, use after closure, invalid action shapes and illegal substep counts.

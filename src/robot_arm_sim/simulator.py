@@ -12,6 +12,7 @@ Forward kinematics/contact recomputation belongs to P0-006.04.
 
 from __future__ import annotations
 
+from dbm import error
 import math
 from dataclasses import dataclass
 from enum import Enum
@@ -303,19 +304,176 @@ class Simulator:
         #
         # No physics step is performed here.
         mujoco.mj_forward(model, data)
+        
+    def step(self, control: object = None, *, n_substeps: int = 1,) -> None:
+        """Advance the simulation by an exact number of physics steps.
+        P0-006.05 defines one substep as one mujoco.mj_step()
+        using the loaded model's physics timestep.
+        
+        Args:
+            control:
+                None to preserve existing data.ctrl, or a full
+                vector of MuJoCo actuator control inputs ordered
+                exactly as the compiled model's actuators.
+                Values are NOT assumed to be joint angles.
 
+            n_substeps:
+                Number of consecutive physics steps. Must be
+                a positive Python integer, excluding bool.
 
-    def step(
-        self,
-        control: object = None,
-        *,
-        n_substeps: int = 1,
-    ) -> None:
-        """Reserved for P0-006.05 through P0-006.08."""
-        self._require_loaded()
-        raise NotImplementedError(
-            "step() is reserved for P0-006.05–006.08"
-        )
+        Raises:
+            SimulatorLifecycleError:
+                Simulator has not been loaded or was closed.
+            TypeError:
+                Invalid substep type or control representation.
+            ValueError:
+                Invalid substep count, control shape, values,
+                actuator ranges or physics timestep.
+        Notes:
+            Input validation occurs before actuator writes
+            and before any physics stepping.
+
+        A command is held constant for the entire call.
+
+        A successful return means all requested physics
+        steps completed; this does not certify stability,
+        reachability or safety of the resulting trajectory.
+
+        Unexpected engine exceptions propagate. Successful
+        earlier substeps are not automatically rolled back.
+        """
+        instance = self._require_loaded()
+        model = instance.model
+        data = instance.data
+
+        # Reject booleans explicitly: bool is a subclass of int
+        # in Python, but True must never silently mean one step.
+        if type(n_substeps) is not int:
+            raise TypeError(
+                "n_substeps must be a positive Python integer"
+            )
+
+        if n_substeps <= 0:
+            raise ValueError(
+                "n_substeps must be greater than zero"
+            )
+
+        # A modified or corrupted model timestep must not
+        # reach MuJoCo's physics integrator.
+        timestep = float(model.opt.timestep)
+
+        if not np.isfinite(timestep) or timestep <= 0.0:
+            raise ValueError(
+                "Physics timestep must be finite and positive"
+            )
+
+        validated_control = None
+
+        # A missing command means: preserve the currently
+        # applied MuJoCo actuator controls.
+        #
+        # Only explicitly supplied commands should undergo
+        # conversion, shape validation and range checking.
+        if control is not None:
+
+            # Reject strings, byte sequences and mappings.
+            # These are not acceptable actuator command vectors.
+            if isinstance(control, (str, bytes, dict)):
+                raise TypeError(
+                    "control must be a numeric actuator vector"
+                )
+
+            try:
+                raw = np.asarray(control)
+            except (TypeError, ValueError) as error:
+                raise TypeError(
+                    "control must be a numeric actuator vector"
+                ) from error
+
+            # The supplied command must contain one value
+            # per actuator in the compiled MuJoCo model.
+            if raw.ndim != 1:
+                raise ValueError(
+                    "control must be a one-dimensional vector"
+                )
+
+            if raw.shape != (model.nu,):
+                raise ValueError(
+                    "control shape mismatch: expected "
+                    f"({model.nu},), received {raw.shape}"
+                )
+
+            # Accept real numeric arrays only.
+            # Prevent implicit conversion of booleans,
+            # strings or complex values into controls.
+            if raw.dtype.kind not in ("i", "u", "f"):
+                raise TypeError(
+                    "control must contain real numeric values"
+                )
+
+            # Copy into private float64 storage so the
+            # caller cannot change the validated command.
+            validated_control = np.array(
+                raw,
+                dtype=np.float64,
+                copy=True,
+            )
+
+            if not np.all(np.isfinite(validated_control)):
+                raise ValueError(
+                    "control contains NaN or infinity"
+                )
+
+            # Apply the model's verified actuator ranges.
+            # These are actuator control units, not
+            # necessarily joint positions or angles.
+            for actuator_id in range(model.nu):
+                name = mujoco.mj_id2name(
+                    model,
+                    mujoco.mjtObj.mjOBJ_ACTUATOR,
+                    actuator_id,
+                ) or f"actuator {actuator_id}"
+
+                if not bool(
+                    model.actuator_ctrllimited[actuator_id]
+                ):
+                    continue
+
+                low = float(
+                    model.actuator_ctrlrange[actuator_id, 0]
+                )
+                high = float(
+                    model.actuator_ctrlrange[actuator_id, 1]
+                )
+
+                if (
+                    not np.isfinite(low)
+                    or not np.isfinite(high)
+                    or low >= high
+                ):
+                    raise ValueError(
+                        f"Invalid control range for {name}"
+                    )
+
+                value = validated_control[actuator_id]
+
+                if value < low or value > high:
+                    raise ValueError(
+                        f"Control for {name} is outside "
+                        f"its permitted range [{low}, {high}]: "
+                        f"{value}"
+                    )
+
+        # The remaining code stays outside the conditional.
+        #
+        # If control was None, validated_control stays None
+        # and the current actuator controls are preserved.
+        if validated_control is not None:
+            np.copyto(data.ctrl, validated_control)
+
+        for _ in range(n_substeps):
+            mujoco.mj_step(model, data)
+
 
     def close(self) -> None:
         """Release wrapper references and permanently close."""
