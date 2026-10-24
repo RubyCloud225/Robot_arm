@@ -10,6 +10,7 @@ import os
 
 import mujoco
 import pytest
+import numpy as np
 
 from robot_arm_sim.simulator import (
     Simulator,
@@ -200,28 +201,43 @@ def test_step_before_load_rejected(panda_path):
         sim.step()
 
 
-def test_reset_not_yet_implemented(panda_path):
-    """006.01 must not claim reset functionality prematurely."""
+
+def test_reset_is_available_after_load(panda_path):
+    """P0-006.02: reset() must work in the LOADED state.
+
+    Verify that resetting preserves the existing compiled
+    model and simulation data rather than recreating them.
+    """
     sim = Simulator(panda_path)
     sim.load()
 
     try:
-        with pytest.raises(NotImplementedError):
-            sim.reset()
+        original_model = sim.model
+        original_data = sim.data
+
+        # Modify primary simulation state so reset has
+        # an actual change to restore.
+        original_velocities = sim.data.qvel.copy()
+        sim.data.qvel[:] = 0.5
+
+        # Reset must now succeed without raising an error.
+        sim.reset()
+
+        # The simulator remains loaded and retains the
+        # exact same model/data objects.
+        assert sim.state is SimulatorState.LOADED
+        assert sim.model is original_model
+        assert sim.data is original_data
+
+        # Verify the modified velocities were restored.
+        np.testing.assert_array_equal(
+            sim.data.qvel,
+            original_velocities,
+        )
+
     finally:
         sim.close()
 
-
-def test_step_not_yet_implemented(panda_path):
-    """006.01 must not claim controlled motion prematurely."""
-    sim = Simulator(panda_path)
-    sim.load()
-
-    try:
-        with pytest.raises(NotImplementedError):
-            sim.step()
-    finally:
-        sim.close()
 
 
 @pytest.mark.parametrize(

@@ -77,3 +77,11 @@ WARNING Sat Oct 24 20:29:59 2026: Inertia matrix is too close to singular at DOF
 
 WARNING Sat Oct 24 20:29:59 2026: Inertia matrix is too close to singular at DOF 0. Check model. Time = 0.0000.
 
+WARNING Sat Oct 24 20:39:41 2026: Inertia matrix is too close to singular at DOF 0. Check model. Time = 0.0000.
+
+WARNING Sat Oct 24 20:39:41 2026: Inertia matrix is too close to singular at DOF 0. Check model. Time = 0.0000.
+
+WARNING Sat Oct 24 20:41:49 2026: Inertia matrix is too close to singular at DOF 0. Check model. Time = 0.0000.
+
+WARNING Sat Oct 24 20:41:49 2026: Inertia matrix is too close to singular at DOF 0. Check model. Time = 0.0000.
+

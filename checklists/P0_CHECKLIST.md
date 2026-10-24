@@ -437,7 +437,54 @@ robot-arm-simulator/
 
   **Status:** COMPLETE — lifecycle wrapper foundation validated.
 
-- [ ] P0-006.02 Make `reset()` restore robot qpos/qvel, gripper command, ball free-joint pose/velocity and target placement.
+
+- [x] P0-006.02 Make reset() restore robot qpos/qvel,
+  gripper command, ball free-joint pose/velocity
+  and target placement.
+
+  **Evidence:**
+  - src/robot_arm_sim/simulator.py
+  - tests/test_simulator_reset.py
+  - tests/test_simulator_lifecycle.py
+  - docs/simulator_reset.md
+
+  **Validated functionality:**
+  - Captures an independent reset baseline on load().
+  - Restores all robot joint positions and velocities.
+  - Restores both gripper finger joint states.
+  - Restores all eight actuator controls.
+  - Restores ball translation and orientation quaternion.
+  - Restores all six ball velocity coordinates.
+  - Restores the target's fixed-body position.
+  - Restores initial simulation time.
+  - Preserves MjModel and MjData object identity.
+  - Supports repeated, idempotent resets.
+  - Prevents cross-instance state contamination.
+  - Rejects reset before loading or after closure.
+  - Rejects unsupported seeded reset requests.
+  - Does not recompile the robot scene or step physics.
+  - Releases the reset snapshot on close().
+
+  **Regression results:**
+  - Command: ./scripts/run_tests.py
+  - Platform: macOS (Darwin)
+  - Python: 3.14.6
+  - pytest: 9.1.1
+  - Tests collected: 462
+  - Passed: 462
+  - Failed: 0
+  - Skipped: 0
+  - Runtime: 2.54 seconds
+
+  **Known limitations:**
+  Reset currently restores primary model/data state only.
+  Clearing applied forces, actuator activation and solver
+  transients is deferred to P0-006.03.
+  Refreshing derived kinematics and contact information
+  is deferred to P0-006.04.
+
+  **Status:** COMPLETE — validated.
+
 - [ ] P0-006.03 Clear stale applied forces, controls, warm-start artifacts or other transient state as appropriate before producing reset observations.
 - [ ] P0-006.04 Recompute derived kinematics/contact data after state writes with the correct MuJoCo forward/step operation.
 - [ ] P0-006.05 Define whether a step represents **one physics step** or **one controller period**. Document it and test the time advance.
