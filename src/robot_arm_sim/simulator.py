@@ -193,6 +193,8 @@ class Simulator:
         "_instance",
         "_state",
         "_reset_snapshot",
+        "_physics_step_count",
+        "_controller_step_count",
     )
 
     def __init__(self, panda_path: str | Path) -> None:
@@ -206,6 +208,8 @@ class Simulator:
         self._panda_path = Path(panda_path)
         self._instance: SimulationInstance | None = None
         self._reset_snapshot: _ResetSnapshot | None = None
+        self._physics_step_count = 0
+        self._controller_step_count = 0
         self._state = SimulatorState.NEW
 
     @property
@@ -239,6 +243,45 @@ class Simulator:
     def data(self) -> mujoco.MjData:
         """Return the currently owned mutable simulation state."""
         return self._require_loaded().data
+
+    
+    @property
+    def simulation_time(self) -> float:
+        """Return the authoritative MuJoCo simulation time.
+
+        The result is expressed in simulated seconds, not
+        elapsed wall-clock time.
+
+        Available only while the simulator is LOADED.
+        """
+        instance = self._require_loaded()
+        return float(instance.data.time)
+
+    @property
+    def physics_step_count(self) -> int:
+        """Return successful physics integrations this episode.
+
+        Each successfully completed mujoco.mj_step() counts
+        once, irrespective of whether the integration was
+        requested by step() or step_controller_period().
+
+        Loading and reset forward computations do not count.
+        """
+        self._require_loaded()
+        return self._physics_step_count
+
+    @property
+    def controller_step_count(self) -> int:
+        """Return completed controller periods this episode.
+
+        A controller period counts only when the entire
+        underlying physics integration batch succeeds.
+
+        Calls directly to step() do not increment this count.
+        """
+        self._require_loaded()
+        return self._controller_step_count
+
 
     def load(self) -> None:
         """Create a fresh scene and capture its reset baseline.
@@ -381,6 +424,12 @@ class Simulator:
         # No physics step is performed here.
         mujoco.mj_forward(model, data)
 
+        
+        # Reset the physics step count for this simulation instance.
+        self._physics_step_count = 0
+        # Reset the controller step count for this simulation instance.
+        self._controller_step_count = 0
+
     
     def step_controller_period(
         self, control: object = None, *, period: float,) -> None:
@@ -434,6 +483,9 @@ class Simulator:
             control=control,
             n_substeps=n_substeps,
         )
+
+        # Record the completion of a controller period.
+        self._controller_step_count += 1
 
         return
     
@@ -603,8 +655,10 @@ class Simulator:
         if validated_control is not None:
             np.copyto(data.ctrl, validated_control)
 
+        # Record each physics step.
         for _ in range(n_substeps):
             mujoco.mj_step(model, data)
+            self._physics_step_count += 1
 
 
     def close(self) -> None:

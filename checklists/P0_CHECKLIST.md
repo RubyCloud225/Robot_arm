@@ -710,7 +710,72 @@ robot-arm-simulator/
 
   **Status:** COMPLETE — user-reported tests passed.
 
-- [ ] P0-006.07 Track simulation time in seconds and count physics/controller steps unambiguously.
+
+- [x] P0-006.07 Track simulation time and physics/controller
+  step counts.
+
+  **Evidence:**
+  - src/robot_arm_sim/simulator.py
+  - tests/test_simulator_counters.py
+  - docs/simulator_execution_counters.md
+
+  **Implementation:**
+  - Added read-only simulation_time property using MjData.time.
+  - Added episode-local physics_step_count.
+  - Added episode-local controller_step_count.
+  - Physics counter increments after each successful
+    mujoco.mj_step() integration.
+  - Controller counter increments after each fully completed
+    step_controller_period() call.
+  - Direct physics stepping does not increment controller count.
+  - Controller-period execution does not double-count physics.
+  - Successful reset restores both counters to zero.
+  - Failed resets preserve existing counter values.
+  - Counter properties enforce simulator lifecycle state.
+  - Independent simulator instances maintain separate counts.
+
+  **Validation coverage:**
+  - Zero counters following initial load.
+  - Single and multiple physics integrations.
+  - Single and repeated controller periods.
+  - Mixed physics/controller stepping without double-counting.
+  - Invalid actuator commands and step counts.
+  - Invalid controller-period rejection.
+  - Partial physics execution failure accounting.
+  - Incomplete controller periods not counted.
+  - Preservation of earlier successful controller periods.
+  - Reset clearing both counters.
+  - New episode accounting after reset.
+  - Idempotent repeated resets.
+  - Failed reset preserving counter values.
+  - Authoritative MuJoCo simulation clock.
+  - Timestep changes without counter corruption.
+  - Independent simulator instance isolation.
+  - Read-only property enforcement.
+  - Lifecycle access restrictions.
+  - Forward computation not counted as a physics step.
+
+  **Default execution timing:**
+  - Physics timestep: 0.002 seconds.
+  - Controller period: 0.040 seconds.
+  - Physics steps per controller period: 20.
+
+  **Regression results:**
+  - Command: ./scripts/run_tests.py
+  - Tests passed: 640
+  - Failures: 0
+  - Result: PASS (user reported)
+
+  **Known limitations:**
+  - Counters track integrations through the Simulator API,
+    not direct external calls to mujoco.mj_step().
+  - Simulation time is not wall-clock execution time.
+  - No real-time execution guarantees.
+  - No autonomous movement or behaviour learning.
+  - No controller policy or trajectory planning.
+
+  **Status:** COMPLETE — validated.
+
 - [ ] P0-006.08 Guard against use before initialisation, use after closure, invalid action shapes and illegal substep counts.
 - [ ] P0-006.09 Allow simulator logic to execute without creating any GUI or requiring a display server.
 
