@@ -551,109 +551,135 @@ class Simulator:
                 "Physics timestep must be finite and positive"
             )
 
-        validated_control = None
-
-        # A missing command means: preserve the currently
-        # applied MuJoCo actuator controls.
+        
+        # P0-006.08 — Validate both new and retained controls.
         #
-        # Only explicitly supplied commands should undergo
-        # conversion, shape validation and range checking.
-        if control is not None:
+        # A caller may have modified data.ctrl directly, so
+        # control=None cannot automatically be assumed safe.
+        #
+        # Preserve the established meaning of None: reuse
+        # existing actuator commands without resetting them.
+        supplied_control = control is not None
 
-            # Reject strings, byte sequences and mappings.
-            # These are not acceptable actuator command vectors.
-            if isinstance(control, (str, bytes, dict)):
-                raise TypeError(
-                    "control must be a numeric actuator vector"
-                )
+        if supplied_control:
+            candidate = control
+        else:
+            candidate = data.ctrl
 
-            try:
-                raw = np.asarray(control)
-            except (TypeError, ValueError) as error:
-                raise TypeError(
-                    "control must be a numeric actuator vector"
-                ) from error
-
-            # The supplied command must contain one value
-            # per actuator in the compiled MuJoCo model.
-            if raw.ndim != 1:
-                raise ValueError(
-                    "control must be a one-dimensional vector"
-                )
-
-            if raw.shape != (model.nu,):
-                raise ValueError(
-                    "control shape mismatch: expected "
-                    f"({model.nu},), received {raw.shape}"
-                )
-
-            # Accept real numeric arrays only.
-            # Prevent implicit conversion of booleans,
-            # strings or complex values into controls.
-            if raw.dtype.kind not in ("i", "u", "f"):
-                raise TypeError(
-                    "control must contain real numeric values"
-                )
-
-            # Copy into private float64 storage so the
-            # caller cannot change the validated command.
-            validated_control = np.array(
-                raw,
-                dtype=np.float64,
-                copy=True,
+        # Reject ambiguous input representations before
+        # attempting conversion to a NumPy array.
+        if isinstance(candidate, (str, bytes, dict)):
+            raise TypeError(
+                "control must be a numeric actuator vector"
             )
 
-            if not np.all(np.isfinite(validated_control)):
-                raise ValueError(
-                    "control contains NaN or infinity"
-                )
+        try:
+            raw = np.asarray(candidate)
+        except (TypeError, ValueError) as error:
+            raise TypeError(
+                "control must be a numeric actuator vector"
+            ) from error
 
-            # Apply the model's verified actuator ranges.
-            # These are actuator control units, not
-            # necessarily joint positions or angles.
-            for actuator_id in range(model.nu):
-                name = mujoco.mj_id2name(
-                    model,
-                    mujoco.mjtObj.mjOBJ_ACTUATOR,
-                    actuator_id,
-                ) or f"actuator {actuator_id}"
+        # Actuator controls must be a single vector, not
+        # a scalar, matrix or nested collection.
+        if raw.ndim != 1:
+            raise ValueError(
+                "control must be a one-dimensional vector"
+            )
 
-                if not bool(
-                    model.actuator_ctrllimited[actuator_id]
-                ):
-                    continue
+        if raw.shape != (model.nu,):
+            raise ValueError(
+                "control shape mismatch: expected "
+                f"({model.nu},), received {raw.shape}"
+            )
 
-                low = float(
-                    model.actuator_ctrlrange[actuator_id, 0]
-                )
-                high = float(
-                    model.actuator_ctrlrange[actuator_id, 1]
-                )
+        # Reject booleans, strings, objects and complex
+        # values instead of silently coercing them.
+        if raw.dtype.kind not in ("i", "u", "f"):
+            raise TypeError(
+                "control must contain real numeric values"
+            )
 
-                if (
-                    not np.isfinite(low)
-                    or not np.isfinite(high)
-                    or low >= high
-                ):
-                    raise ValueError(
-                        f"Invalid control range for {name}"
-                    )
-
-                value = validated_control[actuator_id]
-
-                if value < low or value > high:
-                    raise ValueError(
-                        f"Control for {name} is outside "
-                        f"its permitted range [{low}, {high}]: "
-                        f"{value}"
-                    )
-        
-        # The remaining code stays outside the conditional.
+        # Conversion itself can fail or overflow even if
+        # the original NumPy dtype is numeric.
         #
-        # If control was None, validated_control stays None
-        # and the current actuator controls are preserved.
-        if validated_control is not None:
+        # Make an independent copy for validation so
+        # external caller storage is never changed.
+        try:
+            with np.errstate(over="raise", invalid="raise"):
+                validated_control = np.array(
+                    raw,
+                    dtype=np.float64,
+                    copy=True,
+                )
+        except (
+            TypeError,
+            ValueError,
+            OverflowError,
+            FloatingPointError,
+        ) as error:
+            raise ValueError(
+                "control cannot be represented as "
+                "finite float64 actuator values"
+            ) from error
+
+        if not np.all(np.isfinite(validated_control)):
+            raise ValueError(
+                "control contains NaN or infinity"
+            )
+
+        # Validate actuator control ranges individually.
+        # The robot arm and gripper must retain their
+        # actual MuJoCo actuator semantics.
+        for actuator_id in range(model.nu):
+            name = mujoco.mj_id2name(
+                model,
+                mujoco.mjtObj.mjOBJ_ACTUATOR,
+                actuator_id,
+            ) or f"actuator {actuator_id}"
+
+            if not bool(
+                model.actuator_ctrllimited[actuator_id]
+            ):
+                continue
+
+            low = float(
+                model.actuator_ctrlrange[actuator_id, 0]
+            )
+            high = float(
+                model.actuator_ctrlrange[actuator_id, 1]
+            )
+
+            if (
+                not np.isfinite(low)
+                or not np.isfinite(high)
+                or low >= high
+            ):
+                raise ValueError(
+                    f"Invalid control range for {name}"
+                )
+
+            value = validated_control[actuator_id]
+
+            if value < low or value > high:
+                raise ValueError(
+                    f"Control for {name} is outside "
+                    f"its permitted range [{low}, {high}]: "
+                    f"{value}"
+                )
+
+        # A supplied vector replaces the existing command
+        # only after every check has succeeded.
+        #
+        # With control=None, preserve data.ctrl exactly;
+        # validating existing controls does not require
+        # rewriting the MuJoCo command buffer.
+        if supplied_control:
             np.copyto(data.ctrl, validated_control)
+
+        # Keep the existing P0-006.07 physics loop below
+        # this block, unchanged.
+
 
         # Record each physics step.
         for _ in range(n_substeps):

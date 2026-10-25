@@ -776,7 +776,69 @@ robot-arm-simulator/
 
   **Status:** COMPLETE — validated.
 
-- [ ] P0-006.08 Guard against use before initialisation, use after closure, invalid action shapes and illegal substep counts.
+
+- [x] P0-006.08 Guard against use before initialisation,
+  after closure, invalid action shapes and illegal
+  substep counts.
+
+  **Evidence:**
+  - src/robot_arm_sim/simulator.py
+  - tests/test_simulator_guards.py
+  - tests/test_simulator_lifecycle.py
+  - tests/test_simulator_stepping.py
+  - tests/test_simulator_controller_period.py
+  - tests/test_simulator_counters.py
+  - docs/simulator_guards.md
+
+  **Implementation:**
+  - Preserved explicit NEW, LOADED and CLOSED lifecycle guards.
+  - Rejected stepping and reset operations before loading.
+  - Rejected operations after simulator closure.
+  - Prevented duplicate loading and reopening after closure.
+  - Validated positive integer physics substep counts.
+  - Rejected invalid actuator control dimensions and types.
+  - Rejected NaN, infinity and out-of-range actuator values.
+  - Validated existing data.ctrl values when control=None.
+  - Rejected unrepresentable numeric control values.
+  - Ensured validation occurs before actuator writes
+    and physics integration.
+  - Preserved controller-period validation from P0-006.06.
+  - Preserved physics/controller accounting from P0-006.07.
+  - Prevented invalid commands from initiating MuJoCo stepping.
+
+  **Validation coverage:**
+  - Lifecycle state enforcement.
+  - Invalid operations before load and after close.
+  - Duplicate load rejection.
+  - Illegal substep counts and argument types.
+  - Incorrect actuator vector dimensions.
+  - Boolean, string and complex actuator commands.
+  - Nonfinite and oversized control values.
+  - Corrupted retained actuator commands.
+  - Invalid controller-period commands.
+  - Validation without simulation state mutation.
+  - Preservation of qpos, qvel and actuator controls.
+  - Preservation of simulation time on rejected requests.
+  - Preservation of physics and controller counters.
+  - Regression protection for control=None.
+  - Valid raw and controller-period stepping.
+  - Unsupported seeded reset rejection.
+
+  **Regression results:**
+  - Command: ./scripts/run_tests.py
+  - Tests passed: 685
+  - Failed: 0
+  - Result: PASS (user reported)
+
+  **Known limitations:**
+  - Validation does not guarantee collision-free motion.
+  - Direct external mutation of MuJoCo buffers remains possible.
+  - Unexpected physics engine failures do not guarantee rollback.
+  - Trajectory safety and autonomous control remain separate tasks.
+  - Full headless-operation acceptance is covered by P0-006.09.
+
+  **Status:** COMPLETE — validated.
+
 - [ ] P0-006.09 Allow simulator logic to execute without creating any GUI or requiring a display server.
 
 **Acceptance evidence:** Automated tests run `load → reset → step → reset → close`; simulation clock advances as specified; reset returns known state.
