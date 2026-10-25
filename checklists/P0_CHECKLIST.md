@@ -839,7 +839,62 @@ robot-arm-simulator/
 
   **Status:** COMPLETE — validated.
 
-- [ ] P0-006.09 Allow simulator logic to execute without creating any GUI or requiring a display server.
+
+- [x] P0-006.09 Verify headless simulation operation.
+
+  **Evidence:**
+  - src/robot_arm_sim/simulator.py
+  - tests/test_simulator_headless.py
+  - docs/simulator_headless.md
+
+  **Implementation:**
+  - Verified the Simulator lifecycle operates without
+    creating an interactive MuJoCo viewer.
+  - Verified model loading and reset without rendering.
+  - Verified physics stepping without graphics output.
+  - Verified controller-period stepping without rendering.
+  - Preserved simulation time and execution counters.
+  - Preserved model and data ownership across operations.
+  - Confirmed access to derived physics state without
+    camera rendering.
+  - Confirmed headless contact-data availability.
+  - Verified repeated reset and execution cycles.
+  - Verified independent simulator instances.
+  - Added fresh-subprocess headless verification.
+  - No production simulator modifications required.
+
+  **Validation coverage:**
+  - Complete NEW -> LOADED -> CLOSED lifecycle.
+  - Renderer construction prohibited during execution.
+  - Ball movement under gravity.
+  - Body, site and geometry positions.
+  - Contact generation and inspection.
+  - Physics step counting.
+  - Controller-period counting.
+  - Simulation clock advancement.
+  - Reset state restoration.
+  - Independent model/data instances.
+  - Lifecycle error handling.
+  - Subprocess execution without DISPLAY and
+    WAYLAND_DISPLAY environment variables.
+  - Regression testing of existing simulation features.
+
+  **Regression results:**
+  - Command: ./scripts/run_tests.py
+  - Tests passed: 693
+  - Failures: 0
+  - Result: PASS (user reported)
+
+  **Known limitations:**
+  - Headless operation was validated on the tested host,
+    not every operating system or deployment environment.
+  - Offscreen image rendering was not tested.
+  - Real-time execution guarantees were not established.
+  - No autonomous robot behaviour was introduced.
+  - Hardware deployment remains outside the scope.
+
+  **Status:** COMPLETE — validated.
+
 
 **Acceptance evidence:** Automated tests run `load → reset → step → reset → close`; simulation clock advances as specified; reset returns known state.
 
