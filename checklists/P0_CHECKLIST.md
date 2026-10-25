@@ -898,9 +898,23 @@ robot-arm-simulator/
 
 **Acceptance evidence:** Automated tests run `load → reset → step → reset → close`; simulation clock advances as specified; reset returns known state.
 
-## P0-007 — Joint and gripper command interface
 
-**Goal:** Prove that programmatic control moves hardware-model actuators predictably and safely.
+## P0-007 — Robot actuator control and movement
+
+**Goal:** Establish a verified actuator-control interface,
+demonstrate measured arm and gripper movement, and determine
+whether the Panda can physically reach the ball.
+
+**Prerequisites:**
+- P0-003: Robot model and actuator identification.
+- P0-005: Independent model and data ownership.
+- P0-006: Simulator lifecycle and stepping API.
+
+**Baseline:**
+- 693 tests passed (user reported).
+- No P0-007 implementation or validation is assumed complete.
+
+### Existing requirements
 
 - [ ] P0-007.01 Define a named actuator command vector and document shape, units and correspondence to MuJoCo `data.ctrl` entries.
 - [ ] P0-007.02 Validate every command is finite; reject NaNs, infinities and shape mismatches.
@@ -919,7 +933,85 @@ robot-arm-simulator/
 - [ ] P0-007.15 Test a collision-safe configuration that positions the gripper near the ball.
 - [ ] P0-007.16 Document the reachable workspace and any restrictions caused by the table or pedestal.
 
-**Acceptance evidence:** At least one arm joint moves in response to a valid command; opening and closing are demonstrable; command bounds and invalid inputs are tested.
+### Additional actuator requirements
+
+- [ ] P0-007.17 Verify the compiled actuator-to-joint transmission mapping, control mode, gain and bias semantics for every arm and gripper actuator. Record whether each control represents position, velocity, effort or another model-specific quantity. Do not assume `data.ctrl` contains joint angles.
+
+- [ ] P0-007.18 Define the named controller interface independently of the raw MuJoCo control-vector ordering. Verify that named commands are converted to exactly `model.nu` correctly ordered values, with no omitted or duplicated actuator entries.
+
+- [ ] P0-007.19 Verify command preservation and rejection semantics. Invalid named commands must not partially update `data.ctrl`, advance simulation time or increment execution counters. Keep the P0-006 validation guarantees intact.
+
+- [ ] P0-007.20 Measure single-joint command response. Record starting position, requested command, measured final `qpos`, peak `qvel`, direction of motion and elapsed simulated time. Define an appropriate model-specific tolerance instead of assuming exact tracking.
+
+- [ ] P0-007.21 Verify the neutral/hold controller under gravity. Measure joint drift during a defined stationary interval and after completing a commanded movement. Distinguish position holding from applying zero actuator effort.
+
+- [ ] P0-007.22 Verify gripper actuator behaviour against measured finger motion. Record each finger joint, movement direction, opening width, achieved closure and relevant actuator limits. Do not infer gripper width directly from an unverified actuator-control value.
+
+### Additional reachability requirements
+
+- [ ] P0-007.23 Define the end-effector reference used for reachability calculations. Record the actual site or body identifier, reference frame, and whether the reference represents the wrist, tool centre point or a point between the fingers.
+
+- [ ] P0-007.24 Define the ball approach target geometrically. Account for the ball radius, gripper finger geometry, desired approach direction and clearance. Do not treat the ball centre as an automatically valid end-effector target.
+
+- [ ] P0-007.25 Establish a repeatable reachability investigation from the reset configuration. Record initial joint positions, end-effector position, ball position and initial end-effector-to-target displacement in world coordinates.
+
+- [ ] P0-007.26 Investigate the arm-extension limitation. Identify which joint configurations increase useful reach toward the ball, whether a joint limit is encountered, and whether control mapping or inadequate settling time explains any observed lack of extension.
+
+- [ ] P0-007.27 Separate geometric and collision-free reachability. First assess whether a pose satisfies joint limits and target-position tolerance; then assess whether the arm can achieve an appropriate approach configuration without prohibited penetration of the robot, table or pedestal.
+
+- [ ] P0-007.28 Verify any selected approach motion over intermediate simulation states. Record minimum clearance, joint-limit margins and unexpected contacts. A collision-free final pose alone is insufficient evidence of a safe movement path.
+
+### Additional repeatability and evidence requirements
+
+- [ ] P0-007.29 Repeat representative arm and gripper movement trials after reset. Confirm consistent movement direction, measured joint response and end-effector displacement within documented tolerances. Do not claim full deterministic behaviour without appropriate evidence.
+
+- [ ] P0-007.30 Produce an actuator and reachability validation report containing model revision, actuator mapping, movement commands, measured joint state, world-frame end-effector and ball positions, reachability result, observed limitations and test evidence.
+
+### Acceptance evidence
+
+P0-007 is complete when:
+
+1. A named actuator-control interface is implemented and validated.
+2. Raw actuator control semantics are correctly documented.
+3. Invalid commands are rejected without partial state mutation.
+4. At least one arm joint moves under an explicit valid command.
+5. Joint movement is measured from actual MuJoCo state.
+6. Other commanded joints demonstrate documented hold behaviour.
+7. Gripper opening and closing are physically measured.
+8. Arm and gripper joint limits are respected in representative tests.
+9. End-effector and ball world positions are correctly identified.
+10. The ball's geometric reachability is established.
+11. Collision-free approach feasibility is investigated.
+12. The original arm-extension problem is explained by evidence.
+13. Representative movements are repeatable after reset.
+14. Relevant test and regression suites pass.
+15. Known limitations are documented without overstating capability.
+
+### Scope limitations
+
+P0-007 does not require:
+
+- Autonomous pick-and-place.
+- A trained movement policy.
+- MAHQ model integration.
+- Full Cartesian inverse-kinematics control.
+- Trajectory optimisation.
+- General-purpose motion planning.
+- A verified physical grasp of the ball.
+- Real hardware deployment.
+
+A minimal offline kinematic feasibility investigation is
+permitted as a proposed diagnostic, subject to approval.
+
+Any changes to robot geometry, joint definitions,
+actuator mappings, collision properties or scene placement
+require separate, explicit approval under AGENTS.md.
+
+Do not modify scripts/run_tests.py.
+
+Source changes, tests and compilation require their
+respective approvals before execution.
+
 
 ## P0-008 — Observation schema and measurements
 
