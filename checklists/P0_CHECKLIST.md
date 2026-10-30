@@ -917,6 +917,62 @@ whether the Panda can physically reach the ball.
 ### Existing requirements
 
 - [ ] P0-007.01 Define a named actuator command vector and document shape, units and correspondence to MuJoCo `data.ctrl` entries.
+
+  
+  **Incremental delivery plan:** P0-007.01 is divided into independently reviewable
+  subtasks. The existing PandaCommand and ActuatorRegistry implementation is a
+  starting point, not evidence of completion. Each subtask requires its own
+  implementation review, focused tests and recorded results before sign-off.
+  Recording and submission packaging requirements do not replace engineering
+  acceptance criteria.
+
+  - [ ] **P0-007.01A — Reverse control-vector conversion (small recording task).**
+    - [ ] Inspect existing `PandaCommand`, `ActuatorRegistry`, numeric validation
+          and compiled actuator-ID mapping.
+    - [ ] Add `ActuatorRegistry.from_vector()` using named channels and compiled
+          actuator IDs; do not assume descriptor iteration order.
+    - [ ] Reuse existing numeric, mapping and model-derived control-range checks.
+    - [ ] Test valid round trips, reversed descriptor order, invalid scalar values,
+          malformed shape, out-of-range values and invalid registry definitions.
+    - [ ] Verify the conversion does not change `data.ctrl`, simulation time
+          or execution counters.
+    - [ ] Run targeted tests and relevant regressions; record actual results.
+    - [ ] Update `docs/actuator_commands.md` and record evidence.
+    - [ ] Review the diff and, if submission is required, prepare the approved
+          changed files as `deliverables.zip` without unrelated assets.
+
+    **Evidence (pending):**
+    - Production: `src/robot_arm_sim/actuator_commands.py`
+    - Tests: `tests/test_actuator_commands.py`
+    - Documentation: `docs/actuator_commands.md`
+    - Test command/result: Pending
+    - Commit reference: Pending
+    - Status: NOT COMPLETE
+
+  - [ ] **P0-007.01B — Existing named-command and registry verification.**
+    - [ ] Review the existing eight-channel `PandaCommand` contract and
+          `ActuatorRegistry.from_model()` against the compiled Panda model.
+    - [ ] Verify names, complete mapping, immutability, finite numeric inputs,
+          control limits and rejection without clamping.
+    - [ ] Run focused tests and record the result and any corrections.
+    - [ ] Document raw actuator-control semantics without treating commands
+          as verified joint angles or gripper opening widths.
+    - [ ] Record acceptance evidence and commit reference.
+
+    **Evidence:** Pending. Status: NOT COMPLETE.
+
+  - [ ] **P0-007.01C — Simulator compatibility and final ticket sign-off.**
+    - [ ] Verify named-command conversion works with the existing
+          `Simulator.step()` and `step_controller_period()` APIs.
+    - [ ] Confirm invalid conversion cannot partially mutate control state
+          or advance simulation time.
+    - [ ] Run relevant regression tests and review their actual output.
+    - [ ] Confirm documentation reflects implementation and known limitations.
+    - [ ] Record test command, passed/failed counts and commit reference;
+          close P0-007.01 only when all subtasks meet acceptance criteria.
+
+    **Evidence:** Pending. Status: NOT COMPLETE.
+
 - [ ] P0-007.02 Validate every command is finite; reject NaNs, infinities and shape mismatches.
 - [ ] P0-007.03 Bound actuator input to each actuator's verified `ctrlrange`; define clamp-versus-error behaviour and test it.
 - [ ] P0-007.04 Implement and test the default neutral/hold command appropriate to the selected model (zero effort is not necessarily a safe hold).
